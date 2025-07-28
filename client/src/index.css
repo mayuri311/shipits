@@ -1,0 +1,166 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: hsl(0, 0%, 100%);
+  --foreground: hsl(20, 14.3%, 4.1%);
+  --muted: hsl(60, 4.8%, 95.9%);
+  --muted-foreground: hsl(25, 5.3%, 44.7%);
+  --popover: hsl(0, 0%, 100%);
+  --popover-foreground: hsl(20, 14.3%, 4.1%);
+  --card: hsl(0, 0%, 100%);
+  --card-foreground: hsl(20, 14.3%, 4.1%);
+  --border: hsl(20, 5.9%, 90%);
+  --input: hsl(20, 5.9%, 90%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(211, 100%, 99%);
+  --secondary: hsl(60, 4.8%, 95.9%);
+  --secondary-foreground: hsl(24, 9.8%, 10%);
+  --accent: hsl(60, 4.8%, 95.9%);
+  --accent-foreground: hsl(24, 9.8%, 10%);
+  --destructive: hsl(0, 84.2%, 60.2%);
+  --destructive-foreground: hsl(60, 9.1%, 97.8%);
+  --ring: hsl(20, 14.3%, 4.1%);
+  --radius: 0.5rem;
+  
+  /* Custom colors for Ship Its @ CMU */
+  --maroon: hsl(345, 100%, 25%);
+  --maroon-light: hsl(345, 100%, 31%);
+  --maroon-dark: hsl(345, 100%, 19%);
+  --gradient-start: hsl(0, 0%, 97%);
+  --gradient-mid: hsl(0, 0%, 90%);
+  --gradient-end: hsl(0, 0%, 82%);
+}
+
+.dark {
+  --background: hsl(240, 10%, 3.9%);
+  --foreground: hsl(0, 0%, 98%);
+  --muted: hsl(240, 3.7%, 15.9%);
+  --muted-foreground: hsl(240, 5%, 64.9%);
+  --popover: hsl(240, 10%, 3.9%);
+  --popover-foreground: hsl(0, 0%, 98%);
+  --card: hsl(240, 10%, 3.9%);
+  --card-foreground: hsl(0, 0%, 98%);
+  --border: hsl(240, 3.7%, 15.9%);
+  --input: hsl(240, 3.7%, 15.9%);
+  --primary: hsl(207, 90%, 54%);
+  --primary-foreground: hsl(211, 100%, 99%);
+  --secondary: hsl(240, 3.7%, 15.9%);
+  --secondary-foreground: hsl(0, 0%, 98%);
+  --accent: hsl(240, 3.7%, 15.9%);
+  --accent-foreground: hsl(0, 0%, 98%);
+  --destructive: hsl(0, 62.8%, 30.6%);
+  --destructive-foreground: hsl(0, 0%, 98%);
+  --ring: hsl(240, 4.9%, 83.9%);
+  --radius: 0.5rem;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    overflow-x: hidden;
+  }
+}
+
+@layer utilities {
+  .maroon {
+    color: var(--maroon);
+  }
+  
+  .bg-maroon {
+    background-color: var(--maroon);
+  }
+  
+  .bg-maroon-light {
+    background-color: var(--maroon-light);
+  }
+  
+  .bg-maroon-dark {
+    background-color: var(--maroon-dark);
+  }
+  
+  .border-maroon {
+    border-color: var(--maroon);
+  }
+  
+  .hover\:bg-maroon:hover {
+    background-color: var(--maroon);
+  }
+  
+  .hover\:bg-maroon-dark:hover {
+    background-color: var(--maroon-dark);
+  }
+  
+  .hover\:border-maroon:hover {
+    border-color: var(--maroon);
+  }
+  
+  .hover\:text-maroon:hover {
+    color: var(--maroon);
+  }
+  
+  .text-maroon {
+    color: var(--maroon);
+  }
+  
+  .gradient-bg {
+    background: linear-gradient(135deg, var(--gradient-start) 0%, var(--gradient-mid) 50%, var(--gradient-end) 100%);
+  }
+}
+
+@keyframes float {
+  0%, 100% { 
+    transform: translateY(0px);
+  }
+  50% { 
+    transform: translateY(-20px);
+  }
+}
+
+@keyframes scroll {
+  0% { 
+    transform: translateX(0);
+  }
+  100% { 
+    transform: translateX(-100%);
+  }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
+
+.animate-scroll {
+  animation: scroll 25s linear infinite;
+}
+
+.animate-scroll:hover {
+  animation-play-state: paused;
+}
+
+/* Smooth parallax sections */
+.parallax-section {
+  position: relative;
+  overflow: hidden;
+}
+
+/* Smooth scroll behavior */
+html {
+  scroll-padding-top: 80px;
+  scroll-behavior: smooth;
+}
+
+/* Enhanced section padding for fixed header */
+section:not(#landing) {
+  padding-top: 6rem;
+}
+
+/* Improved scrolling performance */
+* {
+  scroll-behavior: smooth;
+}
