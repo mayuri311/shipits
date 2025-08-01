@@ -2,7 +2,7 @@
 
 # Deployment script for ShipIts Forum
 APP_DIR="/var/www/shipits"
-REPO_URL="https://github.com/YOUR_GITHUB_USERNAME/shipits.git"
+REPO_URL="https://github.com/mayuri311/shipits.git"
 BRANCH="thomas-dev-server"
 
 echo "🚀 Starting deployment..."
