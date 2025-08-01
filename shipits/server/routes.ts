@@ -266,7 +266,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/projects/:id', async (req, res) => {
     try {
-      const project = await mongoStorage.getProject(req.params.id);
+      // Pass the authenticated user ID for view tracking if available
+      const userId = req.session.userId;
+      const project = await mongoStorage.getProject(req.params.id, userId);
       if (!project) {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
@@ -395,6 +397,125 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Unlike project error:', error);
       res.status(500).json({ success: false, error: 'Failed to unlike project' });
+    }
+  });
+
+  // Thread Summary Routes
+  app.get('/api/projects/:id/summary', async (req, res) => {
+    try {
+      const { ThreadSummary } = await import('./models/ThreadSummary');
+      const summary = await ThreadSummary.findByProject(req.params.id);
+      
+      if (!summary) {
+        return res.json({ 
+          success: true, 
+          data: { summary: null, hasSummary: false } 
+        });
+      }
+
+      res.json({ 
+        success: true, 
+        data: { 
+          summary: summary.summary,
+          lastUpdated: summary.lastUpdated,
+          commentCount: summary.commentCount,
+          hasSummary: true
+        } 
+      });
+    } catch (error) {
+      console.error('Get thread summary error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get thread summary' });
+    }
+  });
+
+  app.post('/api/projects/:id/summary/generate', requireAuth, async (req, res) => {
+    try {
+      const { azureOpenAIService } = await import('./services/azureOpenAI');
+      const { ThreadSummary } = await import('./models/ThreadSummary');
+      
+      // Check if Azure OpenAI is configured
+      if (!azureOpenAIService.isConfigured()) {
+        return res.status(503).json({ 
+          success: false, 
+          error: 'AI summary service is not configured. Please contact administrator.' 
+        });
+      }
+
+      // Get project comments
+      const comments = await mongoStorage.getProjectComments(req.params.id);
+      
+      if (comments.length === 0) {
+        return res.json({ 
+          success: true, 
+          data: { 
+            summary: 'No comments to summarize yet.',
+            commentCount: 0,
+            generated: true
+          } 
+        });
+      }
+
+      // Check if we need to generate/update summary
+      const existingSummary = await ThreadSummary.findByProject(req.params.id);
+      const latestComment = comments
+        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+
+      if (existingSummary && !existingSummary.needsUpdate(comments.length, latestComment._id)) {
+        return res.json({ 
+          success: true, 
+          data: { 
+            summary: existingSummary.summary,
+            lastUpdated: existingSummary.lastUpdated,
+            commentCount: existingSummary.commentCount,
+            generated: false // Using cached version
+          } 
+        });
+      }
+
+      // Prepare comments for AI processing
+      const commentsForAI = comments.map((comment: any) => ({
+        content: comment.content,
+        authorName: comment.authorId?.fullName || comment.authorId?.username || 'Anonymous',
+        createdAt: new Date(comment.createdAt)
+      }));
+
+      // Generate summary using Azure OpenAI
+      const generatedSummary = await azureOpenAIService.generateThreadSummary(commentsForAI);
+
+      // Save summary to database
+      const savedSummary = await ThreadSummary.createOrUpdate(
+        req.params.id,
+        generatedSummary,
+        comments.length,
+        latestComment._id
+      );
+
+      res.json({ 
+        success: true, 
+        data: { 
+          summary: savedSummary.summary,
+          lastUpdated: savedSummary.lastUpdated,
+          commentCount: savedSummary.commentCount,
+          generated: true
+        },
+        message: 'Thread summary generated successfully' 
+      });
+
+    } catch (error) {
+      console.error('Generate thread summary error:', error);
+      
+      // Return appropriate error based on the type
+      if (error.message?.includes('Azure OpenAI credentials')) {
+        return res.status(503).json({ 
+          success: false, 
+          error: 'AI summary service is not properly configured.' 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to generate thread summary. Please try again later.' 
+      });
     }
   });
 

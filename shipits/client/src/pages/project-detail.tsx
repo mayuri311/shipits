@@ -12,6 +12,7 @@ import { projectsApi, commentsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CommentThread } from "@/components/CommentThread";
+import { ThreadSummary } from "@/components/ThreadSummary";
 import type { Project, Comment } from "@shared/schema";
 
 export default function ProjectDetail() {
@@ -32,6 +33,8 @@ export default function ProjectDetail() {
   const [submittingUpdate, setSubmittingUpdate] = useState(false);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [subscribing, setSubscribing] = useState(false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [liking, setLiking] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
     commentId: string;
@@ -59,6 +62,10 @@ export default function ProjectDetail() {
       const response = await projectsApi.getProject(id!);
       if (response.success) {
         setProject(response.data.project);
+        // Check if current user has liked this project
+        if (isAuthenticated && user && response.data.project.likes) {
+          setIsLiked(response.data.project.likes.includes(user._id));
+        }
       }
     } catch (err) {
       console.error('Error fetching project:', err);
@@ -275,6 +282,61 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleLike = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to like projects.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLiking(true);
+
+    try {
+      const response = isLiked 
+        ? await projectsApi.unlikeProject(id!)
+        : await projectsApi.likeProject(id!);
+
+      if (response.success) {
+        setIsLiked(!isLiked);
+        // Update the project state with new like count
+        setProject(prev => prev ? {
+          ...prev,
+          analytics: {
+            ...prev.analytics,
+            totalLikes: response.data.totalLikes
+          }
+        } : null);
+        
+        toast({
+          title: isLiked ? "Unliked" : "Liked",
+          description: isLiked 
+            ? "Removed your like from this project."
+            : "Added your like to this project.",
+        });
+      }
+    } catch (err) {
+      console.error('Error updating like:', err);
+      toast({
+        title: "Error",
+        description: "Failed to update like. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLiking(false);
+    }
+  };
+
+  const handleReactionUpdate = (commentId: string, reactions: any[]) => {
+    setComments(prev => prev.map(comment => 
+      comment._id === commentId 
+        ? { ...comment, reactions }
+        : comment
+    ));
+  };
+
   const handleReply = async (parentCommentId: string, content: string) => {
     if (!isAuthenticated || !content.trim()) {
       return;
@@ -434,10 +496,16 @@ export default function ProjectDetail() {
                 {/* Project Stats */}
                 <div className="flex items-center justify-between mb-6 p-4 bg-gray-50 rounded-lg">
                   <div className="flex items-center gap-6">
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <Heart className="w-5 h-5" />
+                    <button 
+                      onClick={handleLike}
+                      disabled={liking}
+                      className={`flex items-center gap-2 transition-colors hover:text-red-500 ${
+                        isLiked ? 'text-red-500' : 'text-gray-600'
+                      } ${liking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                    >
+                      <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
                       <span>{project.analytics?.totalLikes || 0} likes</span>
-                    </div>
+                    </button>
                     <div className="flex items-center gap-2 text-gray-600">
                       <MessageSquare className="w-5 h-5" />
                       <span>{project.analytics?.totalComments || 0} comments</span>
@@ -648,6 +716,12 @@ export default function ProjectDetail() {
                   </TabsContent>
 
                   <TabsContent value="comments" className="mt-6">
+                    {/* Thread Summary */}
+                    <ThreadSummary 
+                      projectId={id!}
+                      commentCount={comments.length}
+                    />
+
                     {/* Comment Form */}
                     {isAuthenticated ? (
                       <form onSubmit={handleSubmitComment} className="mb-6">
@@ -702,6 +776,7 @@ export default function ProjectDetail() {
                               onDelete={handleDeleteComment}
                               submittingReply={submittingComment}
                               formatDate={formatDate}
+                              onReactionUpdate={handleReactionUpdate}
                             />
                           ))
                       ) : (
@@ -739,9 +814,11 @@ export default function ProjectDetail() {
                   <p className="text-sm text-gray-600 mb-4">{project.ownerId.bio}</p>
                 )}
                 
-                <Button variant="outline" className="w-full">
-                  View Profile
-                </Button>
+                <Link href={`/profile/${project.ownerId?._id}`}>
+                  <Button variant="outline" className="w-full">
+                    View Profile
+                  </Button>
+                </Link>
               </div>
 
               {/* Project Stats */}

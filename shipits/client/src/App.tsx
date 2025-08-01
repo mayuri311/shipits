@@ -18,6 +18,7 @@ function Router() {
       <Route path="/forum" component={Forum} />
       <Route path="/forum/project/:id" component={ProjectDetail} />
       <Route path="/profile" component={Profile} />
+      <Route path="/profile/:id" component={Profile} />
       <Route path="/create-project" component={CreateProject} />
       <Route component={NotFound} />
     </Switch>

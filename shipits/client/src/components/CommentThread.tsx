@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import type { Comment } from "@shared/schema";
 import { useAuth } from "@/contexts/AuthContext";
+import { commentsApi } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 
 interface CommentThreadProps {
   comment: Comment;
@@ -13,6 +15,7 @@ interface CommentThreadProps {
   submittingReply: boolean;
   formatDate: (date: string | Date) => string;
   depth?: number;
+  onReactionUpdate?: (commentId: string, reactions: any[]) => void;
 }
 
 export function CommentThread({
@@ -22,11 +25,14 @@ export function CommentThread({
   onDelete,
   submittingReply,
   formatDate,
-  depth = 0
+  depth = 0,
+  onReactionUpdate
 }: CommentThreadProps) {
-  const { user } = useAuth();
+  const { user, isAuthenticated } = useAuth();
+  const { toast } = useToast();
   const [showReplyForm, setShowReplyForm] = useState(false);
   const [replyContent, setReplyContent] = useState("");
+  const [liking, setLiking] = useState(false);
 
   // Get replies to this comment
   const replies = allComments.filter(c => c.parentCommentId === comment._id);
@@ -36,6 +42,45 @@ export function CommentThread({
       onReply(comment._id, replyContent);
       setReplyContent("");
       setShowReplyForm(false);
+    }
+  };
+
+  const handleLike = async () => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to react to comments.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setLiking(true);
+
+    try {
+      const userReaction = comment.reactions?.find(r => r.userId === user?._id);
+      const response = userReaction 
+        ? await commentsApi.removeReaction(comment._id)
+        : await commentsApi.addReaction(comment._id, 'like');
+
+      if (response.success && onReactionUpdate) {
+        onReactionUpdate(comment._id, response.data.reactions);
+        toast({
+          title: userReaction ? "Reaction Removed" : "Reaction Added",
+          description: userReaction 
+            ? "Removed your reaction from this comment."
+            : "Added your reaction to this comment.",
+        });
+      }
+    } catch (err) {
+      console.error('Error updating reaction:', err);
+      toast({
+        title: "Error",
+        description: "Failed to update reaction. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setLiking(false);
     }
   };
 
@@ -71,12 +116,16 @@ export function CommentThread({
           {comment.content}
         </p>
         <div className="flex items-center gap-4 text-sm">
-          {comment.reactions && comment.reactions.length > 0 && (
-            <div className="flex items-center gap-1 text-gray-500">
-              <Heart className="w-4 h-4" />
-              <span>{comment.reactions.length}</span>
-            </div>
-          )}
+          <button 
+            onClick={handleLike}
+            disabled={liking}
+            className={`flex items-center gap-1 transition-colors hover:text-red-500 ${
+              comment.reactions?.some(r => r.userId === user?._id) ? 'text-red-500' : 'text-gray-500'
+            } ${liking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+          >
+            <Heart className={`w-4 h-4 ${comment.reactions?.some(r => r.userId === user?._id) ? 'fill-current' : ''}`} />
+            <span>{comment.reactions?.length || 0}</span>
+          </button>
           <Button
             variant="ghost"
             size="sm"

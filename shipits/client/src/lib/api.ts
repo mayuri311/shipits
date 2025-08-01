@@ -179,6 +179,22 @@ export const projectsApi = {
     return handleResponse(response);
   },
 
+  async likeProject(id: string): Promise<ApiResponse<{ totalLikes: number; isLiked: boolean }>> {
+    const response = await fetch(`${API_BASE}/projects/${id}/like`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async unlikeProject(id: string): Promise<ApiResponse<{ totalLikes: number; isLiked: boolean }>> {
+    const response = await fetch(`${API_BASE}/projects/${id}/like`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
   async getSubscriptionStatus(id: string): Promise<ApiResponse<{ isSubscribed: boolean }>> {
     const response = await fetch(`${API_BASE}/projects/${id}/subscription-status`, {
       credentials: 'include',
@@ -251,6 +267,39 @@ export const commentsApi = {
   async adminDeleteComment(id: string): Promise<ApiResponse> {
     const response = await fetch(`${API_BASE}/admin/comments/${id}`, {
       method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async addReaction(id: string, type: string = 'like'): Promise<ApiResponse<{ reactions: any[]; totalReactions: number }>> {
+    const response = await fetch(`${API_BASE}/comments/${id}/reaction`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ type }),
+    });
+    return handleResponse(response);
+  },
+
+  async removeReaction(id: string): Promise<ApiResponse<{ reactions: any[]; totalReactions: number }>> {
+    const response = await fetch(`${API_BASE}/comments/${id}/reaction`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getThreadSummary(projectId: string): Promise<ApiResponse<{ summary: string | null; lastUpdated?: Date; commentCount?: number; hasSummary: boolean }>> {
+    const response = await fetch(`${API_BASE}/projects/${projectId}/summary`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async generateThreadSummary(projectId: string): Promise<ApiResponse<{ summary: string; lastUpdated: Date; commentCount: number; generated: boolean }>> {
+    const response = await fetch(`${API_BASE}/projects/${projectId}/summary/generate`, {
+      method: 'POST',
       credentials: 'include',
     });
     return handleResponse(response);

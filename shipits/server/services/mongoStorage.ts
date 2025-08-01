@@ -26,7 +26,7 @@ export interface IMongoStorage {
   
   // Project operations
   getProjects(filters?: ProjectFilters, pagination?: PaginationParams): Promise<{ projects: ProjectType[], total: number }>;
-  getProject(id: string): Promise<ProjectType | null>;
+  getProject(id: string, userId?: string): Promise<ProjectType | null>;
   createProject(projectData: CreateProject): Promise<ProjectType>;
   updateProject(id: string, updates: UpdateProject): Promise<ProjectType | null>;
   deleteProject(id: string, userId: string): Promise<boolean>;
@@ -182,15 +182,15 @@ export class MongoStorage implements IMongoStorage {
     }
   }
 
-  async getProject(id: string): Promise<ProjectType | null> {
+  async getProject(id: string, userId?: string): Promise<ProjectType | null> {
     try {
       const project = await Project.findById(id)
         .populate('ownerId', 'username fullName profileImage')
         .populate('collaborators', 'username fullName profileImage');
       
       if (project) {
-        // Record view (without user for now)
-        await this.recordProjectView(id);
+        // Record view with authenticated user ID if available
+        await this.recordProjectView(id, userId);
         return project.toObject();
       }
       return null;
@@ -549,7 +549,15 @@ export class MongoStorage implements IMongoStorage {
   async recordProjectView(projectId: string, userId?: string): Promise<void> {
     try {
       const userObjectId = userId ? new Types.ObjectId(userId) : undefined;
+      
+      // Update detailed analytics in ProjectAnalytics collection
       await ProjectAnalytics.recordView(new Types.ObjectId(projectId), userObjectId);
+      
+      // Also update the project's own analytics.views field that the frontend displays
+      const project = await Project.findById(projectId);
+      if (project) {
+        await project.incrementViews(userObjectId);
+      }
     } catch (error) {
       console.error('Error recording project view:', error);
     }

@@ -87,6 +87,7 @@ export const projectSchema = z.object({
     totalLikes: z.number().default(0),
     subscribers: z.number().default(0)
   }).optional(),
+  likes: z.array(z.instanceof(Types.ObjectId)).optional(),
   lastActivityAt: z.date().optional(),
   featured: z.boolean().default(false),
   isDeleted: z.boolean().default(false),

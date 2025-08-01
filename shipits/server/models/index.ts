@@ -10,6 +10,7 @@ export { Notification, type INotification } from './Notification';
 export { UserActivity, type IUserActivity } from './UserActivity';
 export { ProjectAnalytics, type IProjectAnalytics } from './ProjectAnalytics';
 export { ForumModerationLog, type IForumModerationLog } from './ForumModerationLog';
+export { ThreadSummary, type IThreadSummary } from './ThreadSummary';
 
 // Model initialization function
 import mongoose from 'mongoose';
@@ -22,6 +23,7 @@ import { Notification } from './Notification';
 import { UserActivity } from './UserActivity';
 import { ProjectAnalytics } from './ProjectAnalytics';
 import { ForumModerationLog } from './ForumModerationLog';
+import { ThreadSummary } from './ThreadSummary';
 
 /**
  * Initialize all MongoDB models
