@@ -430,38 +430,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Project Like Routes
+  // Project Like Routes - Toggle like status
   app.post('/api/projects/:id/like', requireAuth, async (req, res) => {
     try {
+      console.log('Toggling project like:', { projectId: req.params.id, userId: req.session.userId });
+      
       const project = await mongoStorage.getProject(req.params.id);
       if (!project) {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
-      await project.addLike(new Types.ObjectId(req.session.userId));
+      const userId = new Types.ObjectId(req.session.userId);
+      const isCurrentlyLiked = project.likes.some(id => id.equals(userId));
       
-      res.json({ 
-        success: true, 
-        data: { 
-          totalLikes: project.analytics.totalLikes,
-          isLiked: true 
-        },
-        message: 'Project liked successfully' 
-      });
+      if (isCurrentlyLiked) {
+        await project.removeLike(userId);
+        console.log('Project unliked:', { projectId: req.params.id, totalLikes: project.analytics.totalLikes });
+        
+        res.json({ 
+          success: true, 
+          data: { 
+            totalLikes: project.analytics.totalLikes,
+            isLiked: false 
+          },
+          message: 'Project unliked successfully' 
+        });
+      } else {
+        await project.addLike(userId);
+        console.log('Project liked:', { projectId: req.params.id, totalLikes: project.analytics.totalLikes });
+        
+        res.json({ 
+          success: true, 
+          data: { 
+            totalLikes: project.analytics.totalLikes,
+            isLiked: true 
+          },
+          message: 'Project liked successfully' 
+        });
+      }
     } catch (error) {
-      console.error('Like project error:', error);
-      res.status(500).json({ success: false, error: 'Failed to like project' });
+      console.error('Toggle project like error:', error);
+      res.status(500).json({ success: false, error: 'Failed to toggle project like' });
     }
   });
 
   app.delete('/api/projects/:id/like', requireAuth, async (req, res) => {
     try {
+      console.log('Unliking project:', { projectId: req.params.id, userId: req.session.userId });
+      
       const project = await mongoStorage.getProject(req.params.id);
       if (!project) {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
       await project.removeLike(new Types.ObjectId(req.session.userId));
+      
+      console.log('Project unliked successfully:', { 
+        projectId: req.params.id, 
+        totalLikes: project.analytics.totalLikes 
+      });
       
       res.json({ 
         success: true, 

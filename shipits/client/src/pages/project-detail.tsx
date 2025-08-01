@@ -85,7 +85,15 @@ export default function ProjectDetail() {
         setProject(response.data.project);
         // Check if current user has liked this project
         if (isAuthenticated && user && response.data.project.likes) {
-          setIsLiked(response.data.project.likes.includes(user._id));
+          const userLiked = response.data.project.likes.some(likeUserId => 
+            likeUserId.toString() === user._id.toString()
+          );
+          setIsLiked(userLiked);
+          console.log('User like status:', { 
+            userId: user._id, 
+            projectLikes: response.data.project.likes, 
+            isLiked: userLiked 
+          });
         }
       }
     } catch (err) {
@@ -316,12 +324,15 @@ export default function ProjectDetail() {
     setLiking(true);
 
     try {
-      const response = isLiked 
-        ? await projectsApi.unlikeProject(id!)
-        : await projectsApi.likeProject(id!);
+      console.log('Project like action:', { projectId: id, currentlyLiked: isLiked, action: isLiked ? 'unlike' : 'like' });
+      
+      // Use the toggle endpoint (POST) which handles both like and unlike
+      const response = await projectsApi.likeProject(id!);
+
+      console.log('Project like response:', response);
 
       if (response.success) {
-        setIsLiked(!isLiked);
+        setIsLiked(response.data.isLiked);
         // Update the project state with new like count
         setProject(prev => prev ? {
           ...prev,
@@ -332,17 +343,20 @@ export default function ProjectDetail() {
         } : null);
         
         toast({
-          title: isLiked ? "Unliked" : "Liked",
-          description: isLiked 
-            ? "Removed your like from this project."
-            : "Added your like to this project.",
+          title: response.data.isLiked ? "❤️ Liked" : "💔 Unliked",
+          description: response.data.isLiked 
+            ? "Added your like to this project!"
+            : "Removed your like from this project.",
         });
+      } else {
+        throw new Error(response.error || 'Failed to update like');
       }
     } catch (err) {
-      console.error('Error updating like:', err);
+      console.error('Error updating project like:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       toast({
         title: "Error",
-        description: "Failed to update like. Please try again.",
+        description: `Failed to update like: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
@@ -451,10 +465,10 @@ export default function ProjectDetail() {
                   {subscribing ? (
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
                   ) : (
-                    <Bookmark className="w-4 h-4 mr-2" />
+                <Bookmark className="w-4 h-4 mr-2" />
                   )}
                   {isSubscribed ? "Subscribed" : "Subscribe"}
-                </Button>
+              </Button>
               )}
               <ShareButton
                 title={project.title}
@@ -619,7 +633,7 @@ export default function ProjectDetail() {
                   </TabsContent>
                   
                   
-
+                  
                   <TabsContent value="updates" className="mt-6">
                     {/* Post Update Form - Only for project owner */}
                     {isAuthenticated && project && project.ownerId._id === user?._id && (
@@ -717,10 +731,10 @@ export default function ProjectDetail() {
                             }
                           </p>
                         </div>
-                      )}
-                    </div>
+                        )}
+                      </div>
                   </TabsContent>
-
+                  
                   <TabsContent value="comments" className="mt-6">
                     {/* Thread Summary */}
                     <ThreadSummary 
@@ -784,7 +798,7 @@ export default function ProjectDetail() {
                               formatDate={formatDate}
                               onReactionUpdate={handleReactionUpdate}
                             />
-                          ))
+                        ))
                       ) : (
                         <div className="text-center py-8">
                           <p className="text-gray-500">No comments yet.</p>
@@ -821,9 +835,9 @@ export default function ProjectDetail() {
                 )}
                 
                 <Link href={`/profile/${project.ownerId?._id}`}>
-                  <Button variant="outline" className="w-full">
-                    View Profile
-                  </Button>
+                <Button variant="outline" className="w-full">
+                  View Profile
+                </Button>
                 </Link>
               </div>
 

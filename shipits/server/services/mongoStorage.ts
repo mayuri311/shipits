@@ -206,7 +206,7 @@ export class MongoStorage implements IMongoStorage {
       if (project) {
         // Record view with authenticated user ID if available
         await this.recordProjectView(id, userId);
-        return project.toObject();
+        return project; // Return the mongoose document, not the plain object
       }
       return null;
     } catch (error) {

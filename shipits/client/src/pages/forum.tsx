@@ -108,6 +108,44 @@ export default function Forum() {
     return "/api/placeholder/400/250";
   };
 
+  const handleProjectLike = async (projectId: string) => {
+    if (!isAuthenticated) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to like projects.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Use the toggle endpoint (POST) which handles both like and unlike
+      const response = await projectsApi.likeProject(projectId);
+
+      if (response.success) {
+        // Refetch projects to update the UI
+        queryClient.invalidateQueries({ queryKey: ['projects'] });
+        
+        toast({
+          title: response.data.isLiked ? "❤️ Liked" : "💔 Unliked",
+          description: response.data.isLiked 
+            ? "Added your like to this project!"
+            : "Removed your like from this project.",
+        });
+      } else {
+        throw new Error(response.error || 'Failed to update like');
+      }
+    } catch (err) {
+      console.error('Error updating project like:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
+      toast({
+        title: "Error",
+        description: `Failed to update like: ${errorMessage}`,
+        variant: "destructive",
+      });
+    }
+  };
+
   if (initialLoading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -343,10 +381,18 @@ export default function Forum() {
 
                       <div className="flex items-center justify-between text-sm text-gray-500">
                         <div className="flex items-center gap-4">
-                          <span className="flex items-center gap-1">
+                          <button
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              handleProjectLike(project._id);
+                            }}
+                            className={`flex items-center gap-1 transition-colors hover:text-red-500 text-gray-500 ${!isAuthenticated ? 'cursor-default' : 'cursor-pointer'}`}
+                            disabled={!isAuthenticated}
+                          >
                             <Heart className="w-4 h-4" />
                             {project.analytics?.totalLikes || 0}
-                          </span>
+                          </button>
                           <span className="flex items-center gap-1">
                             <MessageSquare className="w-4 h-4" />
                             {project.analytics?.totalComments || 0}
