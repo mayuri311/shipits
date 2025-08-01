@@ -1,6 +1,13 @@
 import { z } from "zod";
 import { Types } from "mongoose";
 
+// Contact Form Schema Validation
+export const contactSchema = z.object({
+  name: z.string().min(1, "Name is required").max(100, "Name must be less than 100 characters").trim(),
+  email: z.string().email("Invalid email format").toLowerCase().trim(),
+  message: z.string().min(1, "Message is required").max(1000, "Message must be less than 1000 characters").trim()
+});
+
 // MongoDB User Schema Validation
 export const userSchema = z.object({
   _id: z.instanceof(Types.ObjectId).optional(),

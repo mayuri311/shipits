@@ -2,7 +2,7 @@
 
 ## 🚀 Quick Setup
 
-The AI summary feature is now **fully implemented and fixed**! To get it working, you just need to add your Azure OpenAI credentials.
+The AI summary feature is now **fully implemented and fixed**! The import issues have been resolved by switching to the standard OpenAI package with Azure configuration. To get it working, you just need to add your Azure OpenAI credentials.
 
 ### 1. Get Azure OpenAI Credentials
 
@@ -47,12 +47,14 @@ Once configured, users will see:
 
 ## 🔧 Fixes Applied
 
-✅ **Fixed import issues** with dynamic module loading  
+✅ **Fixed import issues** - Switched from `@azure/openai` to standard `openai` package with Azure configuration  
+✅ **Resolved module import errors** - The original package had export issues, now using proper OpenAI SDK  
 ✅ **Added proper error handling** for missing credentials  
 ✅ **Fixed duplicate UI elements** in project detail page  
 ✅ **Added environment variable templates**  
 ✅ **Improved initialization** to not crash app if Azure OpenAI is unavailable  
-✅ **Enhanced logging** for debugging
+✅ **Enhanced logging** for debugging  
+✅ **Package cleanup** - Removed problematic `@azure/openai` dependency
 
 ## 🧪 Testing
 

@@ -3,6 +3,7 @@ import { Upload, X, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { uploadApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { compressImage, formatFileSize } from "@/lib/imageCompression";
 
 interface UploadedImage {
   filename: string;
@@ -50,10 +51,11 @@ export function ImageUpload({ onImagesUploaded, maxImages = 10, existingImages =
         });
         continue;
       }
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      // Allow larger files since we'll compress them
+      if (file.size > 50 * 1024 * 1024) { // 50MB limit for original file
         toast({
           title: "File too large",
-          description: `${file.name} is larger than 5MB.`,
+          description: `${file.name} is larger than 50MB. Please select a smaller image.`,
           variant: "destructive",
         });
         continue;
@@ -65,26 +67,63 @@ export function ImageUpload({ onImagesUploaded, maxImages = 10, existingImages =
 
     setUploading(true);
     try {
-      // Create a new FileList-like object with valid files
-      const dataTransfer = new DataTransfer();
-      validFiles.forEach(file => dataTransfer.items.add(file));
-      
-      const response = await uploadApi.uploadImages(dataTransfer.files);
-      
-      if (response.success) {
-        const newImages = [...images, ...response.data.files];
+      // Show compression progress
+      toast({
+        title: "Processing images...",
+        description: `Compressing ${validFiles.length} image(s) for optimal upload.`,
+      });
+
+      // Compress each image
+      const compressedImages: UploadedImage[] = [];
+      let totalOriginalSize = 0;
+      let totalCompressedSize = 0;
+
+      for (const file of validFiles) {
+        try {
+          const compressionResult = await compressImage(file, {
+            maxWidth: 1200,
+            maxHeight: 1200,
+            quality: 0.8,
+            maxSizeKB: 800, // 800KB max for project images
+            format: 'jpeg'
+          });
+
+          totalOriginalSize += compressionResult.originalSize;
+          totalCompressedSize += compressionResult.compressedSize;
+
+          compressedImages.push({
+            filename: file.name,
+            originalName: file.name,
+            data: compressionResult.dataUrl,
+            size: compressionResult.compressedSize,
+            mimetype: 'image/jpeg'
+          });
+        } catch (compressionError) {
+          console.error('Failed to compress image:', file.name, compressionError);
+          toast({
+            title: "Compression failed",
+            description: `Failed to process ${file.name}. Skipping this image.`,
+            variant: "destructive",
+          });
+        }
+      }
+
+      if (compressedImages.length > 0) {
+        const newImages = [...images, ...compressedImages];
         setImages(newImages);
         onImagesUploaded(newImages);
+        
+        const compressionRatio = totalOriginalSize / totalCompressedSize;
         toast({
-          title: "Images uploaded",
-          description: `${response.data.files.length} image(s) uploaded successfully.`,
+          title: "Images processed",
+          description: `${compressedImages.length} image(s) compressed from ${formatFileSize(totalOriginalSize)} to ${formatFileSize(totalCompressedSize)} (${compressionRatio.toFixed(1)}x smaller).`,
         });
       }
     } catch (error) {
       console.error('Upload error:', error);
       toast({
-        title: "Upload failed",
-        description: "Failed to upload images. Please try again.",
+        title: "Processing failed",
+        description: "Failed to process images. Please try again.",
         variant: "destructive",
       });
     } finally {

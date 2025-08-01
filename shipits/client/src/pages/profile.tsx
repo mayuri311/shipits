@@ -10,6 +10,7 @@ import { usersApi, uploadApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
 import type { User as UserType } from "@shared/schema";
+import { compressProfileImage, formatFileSize } from "@/lib/imageCompression";
 
 export default function Profile() {
   const { user: currentUser, updateUser } = useAuth();
@@ -91,10 +92,11 @@ export default function Profile() {
       return;
     }
     
-    if (file.size > 5 * 1024 * 1024) {
+    // Allow larger files since we'll compress them
+    if (file.size > 50 * 1024 * 1024) { // 50MB limit for original file
       toast({
         title: "File too large",
-        description: "Profile picture must be smaller than 5MB.",
+        description: "Please select an image smaller than 50MB.",
         variant: "destructive",
       });
       return;
@@ -102,20 +104,34 @@ export default function Profile() {
     
     setUploadingProfilePic(true);
     try {
-      const response = await uploadApi.uploadImages(files);
-      if (response.success && response.data.files.length > 0) {
-        const uploadedImage = response.data.files[0];
-        setEditedProfile(prev => ({ ...prev, profileImage: uploadedImage.data }));
-        toast({
-          title: "Profile picture uploaded",
-          description: "Your profile picture has been updated.",
-        });
-      }
-    } catch (error) {
-      console.error('Profile picture upload error:', error);
+      // Show compression progress
       toast({
-        title: "Upload failed",
-        description: "Failed to upload profile picture. Please try again.",
+        title: "Processing image...",
+        description: `Compressing ${formatFileSize(file.size)} image for optimal upload.`,
+      });
+
+      // Compress the image before upload
+      const compressionResult = await compressProfileImage(file);
+      
+      console.log('Image compression result:', {
+        originalSize: formatFileSize(compressionResult.originalSize),
+        compressedSize: formatFileSize(compressionResult.compressedSize),
+        compressionRatio: compressionResult.compressionRatio.toFixed(2) + 'x',
+        dimensions: `${compressionResult.width}x${compressionResult.height}`
+      });
+
+      // Set the compressed image directly (skip API upload since we have the data URL)
+      setEditedProfile(prev => ({ ...prev, profileImage: compressionResult.dataUrl }));
+      
+      toast({
+        title: "Profile picture processed",
+        description: `Image compressed from ${formatFileSize(compressionResult.originalSize)} to ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}x smaller).`,
+      });
+    } catch (error) {
+      console.error('Profile picture compression error:', error);
+      toast({
+        title: "Processing failed",
+        description: "Failed to process the image. Please try a different image.",
         variant: "destructive",
       });
     } finally {

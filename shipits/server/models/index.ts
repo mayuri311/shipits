@@ -11,6 +11,7 @@ export { UserActivity, type IUserActivity } from './UserActivity';
 export { ProjectAnalytics, type IProjectAnalytics } from './ProjectAnalytics';
 export { ForumModerationLog, type IForumModerationLog } from './ForumModerationLog';
 export { ThreadSummary, type IThreadSummary } from './ThreadSummary';
+export { Contact, type IContact } from './Contact';
 
 // Model initialization function
 import mongoose from 'mongoose';
@@ -24,6 +25,7 @@ import { UserActivity } from './UserActivity';
 import { ProjectAnalytics } from './ProjectAnalytics';
 import { ForumModerationLog } from './ForumModerationLog';
 import { ThreadSummary } from './ThreadSummary';
+import { Contact } from './Contact';
 
 /**
  * Initialize all MongoDB models
@@ -44,7 +46,8 @@ export async function initializeModels(): Promise<void> {
       'Notification',
       'UserActivity',
       'ProjectAnalytics',
-      'ForumModerationLog'
+      'ForumModerationLog',
+      'Contact'
     ];
     
     // Ensure indexes are created for all models

@@ -3,7 +3,7 @@
  * Handles AI-powered summary generation for comment threads
  */
 
-import { AzureOpenAI } from '@azure/openai';
+import OpenAI from 'openai';
 
 export interface ThreadSummaryConfig {
   maxTokens?: number;
@@ -12,7 +12,7 @@ export interface ThreadSummaryConfig {
 }
 
 export class AzureOpenAIService {
-  private client: AzureOpenAI;
+  private client: OpenAI | null;
   private deploymentName: string;
 
   constructor() {
@@ -23,23 +23,26 @@ export class AzureOpenAIService {
     if (!endpoint || !apiKey) {
       console.warn('Azure OpenAI credentials not configured. AI summary features will be disabled.');
       // Don't throw error to allow app to start without Azure OpenAI
-      this.client = null as any;
+      this.client = null;
       this.deploymentName = deployment;
       return;
     }
 
     try {
-      // Create Azure OpenAI client - matching the exact pattern from your docs
-      this.client = new AzureOpenAI({
-        azure_endpoint: endpoint,
-        api_key: apiKey,
-        api_version: "2024-12-01-preview", // Updated to match your sample
+      // Create OpenAI client configured for Azure
+      this.client = new OpenAI({
+        apiKey: apiKey,
+        baseURL: `${endpoint.replace(/\/$/, '')}/openai/deployments/${deployment}`,
+        defaultQuery: { 'api-version': '2024-02-01' },
+        defaultHeaders: {
+          'api-key': apiKey,
+        },
       });
       this.deploymentName = deployment;
       console.log('✅ Azure OpenAI service initialized successfully');
     } catch (error) {
       console.error('❌ Failed to initialize Azure OpenAI service:', error);
-      this.client = null as any;
+      this.client = null;
       this.deploymentName = deployment;
     }
   }
@@ -103,7 +106,6 @@ Summary:`;
         ],
         max_tokens: config.maxTokens || 150,
         temperature: config.temperature || 0.3,
-        top_p: 1.0, // Added to match your sample
       });
 
       console.log('Azure OpenAI Response:', {
@@ -155,7 +157,8 @@ Summary:`;
     return !!(
       this.client &&
       process.env.AZURE_OPENAI_ENDPOINT && 
-      process.env.AZURE_OPENAI_API_KEY
+      process.env.AZURE_OPENAI_API_KEY &&
+      this.deploymentName
     );
   }
 
