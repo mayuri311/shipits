@@ -451,7 +451,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Thread Summary Routes
   app.get('/api/projects/:id/summary', async (req, res) => {
     try {
-      const { ThreadSummary } = await import('./models/ThreadSummary');
+      let ThreadSummary;
+      
+      try {
+        const summaryModule = await import('./models/ThreadSummary');
+        ThreadSummary = summaryModule.ThreadSummary;
+      } catch (importError) {
+        console.error('Failed to import ThreadSummary model:', importError);
+        return res.status(500).json({ 
+          success: false, 
+          error: 'Summary service is not available.' 
+        });
+      }
+      
       const summary = await ThreadSummary.findByProject(req.params.id);
       
       if (!summary) {
@@ -478,11 +490,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post('/api/projects/:id/summary/generate', requireAuth, async (req, res) => {
     try {
-      const { azureOpenAIService } = await import('./services/azureOpenAI');
-      const { ThreadSummary } = await import('./models/ThreadSummary');
+      // Import Azure OpenAI service and ThreadSummary model
+      let azureOpenAIService;
+      let ThreadSummary;
+      
+      try {
+        const azureModule = await import('./services/azureOpenAI');
+        const summaryModule = await import('./models/ThreadSummary');
+        azureOpenAIService = azureModule.azureOpenAIService;
+        ThreadSummary = summaryModule.ThreadSummary;
+      } catch (importError) {
+        console.error('Failed to import Azure OpenAI modules:', importError);
+        return res.status(503).json({ 
+          success: false, 
+          error: 'AI summary service is not available. Please contact administrator.' 
+        });
+      }
       
       // Check if Azure OpenAI is configured
-      if (!azureOpenAIService.isConfigured()) {
+      if (!azureOpenAIService || !azureOpenAIService.isConfigured()) {
         return res.status(503).json({ 
           success: false, 
           error: 'AI summary service is not configured. Please contact administrator.' 
@@ -861,6 +887,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.put('/api/users/:id', requireAuth, async (req, res) => {
     try {
+      console.log('Update user request:', {
+        userId: req.params.id,
+        sessionUserId: req.session.userId,
+        body: req.body
+      });
+
       // Users can only update their own profile, unless they're admin
       const currentUser = await mongoStorage.getUser(req.session.userId);
       if (!currentUser) {
@@ -876,6 +908,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ success: false, error: 'User not found' });
       }
 
+      console.log('User updated successfully:', updatedUser._id);
+
       res.json({ 
         success: true, 
         data: { user: updatedUser },
@@ -883,7 +917,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       console.error('Update user error:', error);
-      res.status(500).json({ success: false, error: 'Failed to update user' });
+      
+      // Handle MongoDB validation errors
+      if (error.name === 'ValidationError') {
+        const validationErrors = Object.values(error.errors).map((err: any) => err.message);
+        return res.status(400).json({ 
+          success: false, 
+          error: `Validation failed: ${validationErrors.join(', ')}` 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        error: error.message || 'Failed to update user' 
+      });
     }
   });
 

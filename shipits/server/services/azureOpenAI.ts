@@ -21,16 +21,27 @@ export class AzureOpenAIService {
     const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4o';
 
     if (!endpoint || !apiKey) {
-      throw new Error('Azure OpenAI credentials not configured. Please check your .env file.');
+      console.warn('Azure OpenAI credentials not configured. AI summary features will be disabled.');
+      // Don't throw error to allow app to start without Azure OpenAI
+      this.client = null as any;
+      this.deploymentName = deployment;
+      return;
     }
 
-    // Create Azure OpenAI client - matching the exact pattern from your docs
-    this.client = new AzureOpenAI({
-      azure_endpoint: endpoint,
-      api_key: apiKey,
-      api_version: "2024-12-01-preview", // Updated to match your sample
-    });
-    this.deploymentName = deployment;
+    try {
+      // Create Azure OpenAI client - matching the exact pattern from your docs
+      this.client = new AzureOpenAI({
+        azure_endpoint: endpoint,
+        api_key: apiKey,
+        api_version: "2024-12-01-preview", // Updated to match your sample
+      });
+      this.deploymentName = deployment;
+      console.log('✅ Azure OpenAI service initialized successfully');
+    } catch (error) {
+      console.error('❌ Failed to initialize Azure OpenAI service:', error);
+      this.client = null as any;
+      this.deploymentName = deployment;
+    }
   }
 
   /**
@@ -41,6 +52,10 @@ export class AzureOpenAIService {
     config: ThreadSummaryConfig = {}
   ): Promise<string> {
     try {
+      if (!this.client) {
+        throw new Error('Azure OpenAI service is not properly initialized. Please check your configuration.');
+      }
+      
       if (comments.length === 0) {
         return 'No comments in this thread yet.';
       }
@@ -138,6 +153,7 @@ Summary:`;
    */
   isConfigured(): boolean {
     return !!(
+      this.client &&
       process.env.AZURE_OPENAI_ENDPOINT && 
       process.env.AZURE_OPENAI_API_KEY
     );

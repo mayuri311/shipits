@@ -618,30 +618,7 @@ export default function ProjectDetail() {
                     </div>
                   </TabsContent>
                   
-                  <TabsContent value="updates" className="mt-6">
-                    {project.updates && project.updates.length > 0 ? (
-                      <div className="space-y-6">
-                        {project.updates.map((update, index) => (
-                          <div key={index} className="border-l-4 border-maroon pl-4">
-                            <h4 className="font-semibold text-gray-900">{update.title}</h4>
-                            <p className="text-sm text-gray-500 mb-2">
-                              {formatDate(update.createdAt)}
-                            </p>
-                            <p className="text-gray-700">{update.content}</p>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="text-center py-8">
-                        <p className="text-gray-500">No updates yet.</p>
-                        {isAuthenticated && user?._id === project.ownerId._id && (
-                          <p className="text-sm text-gray-400 mt-2">
-                            Project updates will appear here when you post them.
-                          </p>
-                        )}
-                      </div>
-                    )}
-                                    </TabsContent>
+                  
 
                   <TabsContent value="updates" className="mt-6">
                     {/* Post Update Form - Only for project owner */}

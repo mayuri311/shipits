@@ -110,16 +110,25 @@ export class MongoStorage implements IMongoStorage {
 
   async updateUser(id: string, updates: UpdateUser): Promise<UserType | null> {
     try {
+      console.log('MongoStorage updateUser called with:', { id, updates });
+
       // Handle profile image removal (null or empty string should unset the field)
       if (updates.profileImage === null || updates.profileImage === '') {
         updates.profileImage = undefined;
       }
       
-      const user = await User.findByIdAndUpdate(id, updates, { new: true });
-      return user ? user.toObject() : null;
+      const user = await User.findByIdAndUpdate(id, updates, { new: true, runValidators: true });
+      
+      if (!user) {
+        console.log('User not found for update:', id);
+        return null;
+      }
+
+      console.log('User updated successfully in MongoDB:', user._id);
+      return user.toObject();
     } catch (error) {
-      console.error('Error updating user:', error);
-      return null;
+      console.error('Error updating user in MongoDB:', error);
+      throw error; // Re-throw the error so it can be handled by the route
     }
   }
 

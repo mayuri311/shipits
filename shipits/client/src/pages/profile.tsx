@@ -42,12 +42,16 @@ export default function Profile() {
       // Prepare the update data, handling profile image properly
       const updateData = { ...editedProfile };
       
+      console.log('Update data being sent:', updateData);
+      
       // If profile image is explicitly set to null, we want to remove it
       if (updateData.profileImage === null) {
         updateData.profileImage = '';
       }
       
       const response = await usersApi.updateUser(user._id.toString(), updateData);
+      console.log('Update response:', response);
+      
       if (response.success) {
         updateUser(response.data.user);
         setIsEditing(false);
@@ -55,12 +59,15 @@ export default function Profile() {
           title: "Profile Updated",
           description: "Your profile has been successfully updated.",
         });
+      } else {
+        throw new Error(response.error || 'Update failed');
       }
     } catch (error) {
       console.error("Error updating profile:", error);
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
       toast({
         title: "Error",
-        description: "Failed to update profile. Please try again.",
+        description: `Failed to update profile: ${errorMessage}`,
         variant: "destructive",
       });
     }
