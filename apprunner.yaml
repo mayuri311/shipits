@@ -1,0 +1,18 @@
+version: 1.0
+runtime: nodejs18
+build:
+  commands:
+    build:
+      - echo "Installing dependencies..."
+      - cd shipits && npm install
+      - echo "Building client..."
+      - cd client && npm run build
+      - echo "Build complete"
+run:
+  runtime-version: 18
+  command: cd shipits && npm start
+  network:
+    port: 3555
+  env:
+    - name: NODE_ENV
+      value: production
