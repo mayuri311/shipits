@@ -7,6 +7,7 @@ import { z } from "zod";
 import session from "express-session";
 import path from "path";
 import { fileURLToPath } from "url";
+import { Types } from "mongoose";
 import { 
   loginSchema, registerSchema, createProjectSchema, createCommentSchema, 
   createEventSchema, updateUserSchema, updateProjectSchema,
@@ -86,7 +87,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Authentication Routes
   app.post('/api/auth/register', validateBody(registerSchema), async (req, res) => {
     try {
-      const { email, username } = req.body;
+      const { email, username, password, fullName } = req.body;
+      
+      // Validate required fields
+      if (!email || !username || !password || !fullName) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'All required fields must be provided' 
+        });
+      }
       
       // Check if user already exists
       const existingUser = await mongoStorage.getUserByEmail(email);
@@ -105,18 +114,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
+      // Create user
       const user = await mongoStorage.createUser(req.body);
+      
+      // Set up session
       req.session.userId = user._id.toString();
       req.session.user = user;
 
-      res.json({ 
+      // Return success response without password
+      const userResponse = { ...user };
+      delete userResponse.password;
+
+      res.status(201).json({ 
         success: true, 
-        data: { user: { ...user, password: undefined } },
+        data: { user: userResponse },
         message: 'User registered successfully' 
       });
     } catch (error) {
       console.error('Registration error:', error);
-      res.status(500).json({ success: false, error: 'Registration failed' });
+      
+      // Handle MongoDB validation errors
+      if (error.name === 'ValidationError') {
+        const validationErrors = Object.values(error.errors).map((err: any) => err.message);
+        return res.status(400).json({ 
+          success: false, 
+          error: `Validation failed: ${validationErrors.join(', ')}` 
+        });
+      }
+      
+      // Handle duplicate key errors
+      if (error.code === 11000) {
+        const field = Object.keys(error.keyPattern)[0];
+        return res.status(400).json({ 
+          success: false, 
+          error: `${field.charAt(0).toUpperCase() + field.slice(1)} already exists` 
+        });
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        error: 'Registration failed. Please try again.' 
+      });
     }
   });
 
@@ -310,6 +348,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Admin delete project error:', error);
       res.status(500).json({ success: false, error: 'Failed to delete project' });
+    }
+  });
+
+  // Project Like Routes
+  app.post('/api/projects/:id/like', requireAuth, async (req, res) => {
+    try {
+      const project = await mongoStorage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      await project.addLike(new Types.ObjectId(req.session.userId));
+      
+      res.json({ 
+        success: true, 
+        data: { 
+          totalLikes: project.analytics.totalLikes,
+          isLiked: true 
+        },
+        message: 'Project liked successfully' 
+      });
+    } catch (error) {
+      console.error('Like project error:', error);
+      res.status(500).json({ success: false, error: 'Failed to like project' });
+    }
+  });
+
+  app.delete('/api/projects/:id/like', requireAuth, async (req, res) => {
+    try {
+      const project = await mongoStorage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      await project.removeLike(new Types.ObjectId(req.session.userId));
+      
+      res.json({ 
+        success: true, 
+        data: { 
+          totalLikes: project.analytics.totalLikes,
+          isLiked: false 
+        },
+        message: 'Project unliked successfully' 
+      });
+    } catch (error) {
+      console.error('Unlike project error:', error);
+      res.status(500).json({ success: false, error: 'Failed to unlike project' });
+    }
+  });
+
+  // Comment Reaction Routes
+  app.post('/api/comments/:id/reaction', requireAuth, async (req, res) => {
+    try {
+      const { type = 'like' } = req.body;
+      const comment = await mongoStorage.getComment(req.params.id);
+      if (!comment) {
+        return res.status(404).json({ success: false, error: 'Comment not found' });
+      }
+
+      await comment.addReaction(new Types.ObjectId(req.session.userId), type);
+      
+      res.json({ 
+        success: true, 
+        data: { 
+          reactions: comment.reactions,
+          totalReactions: comment.reactions.length 
+        },
+        message: 'Reaction added successfully' 
+      });
+    } catch (error) {
+      console.error('Add reaction error:', error);
+      res.status(500).json({ success: false, error: 'Failed to add reaction' });
+    }
+  });
+
+  app.delete('/api/comments/:id/reaction', requireAuth, async (req, res) => {
+    try {
+      const comment = await mongoStorage.getComment(req.params.id);
+      if (!comment) {
+        return res.status(404).json({ success: false, error: 'Comment not found' });
+      }
+
+      await comment.removeReaction(new Types.ObjectId(req.session.userId));
+      
+      res.json({ 
+        success: true, 
+        data: { 
+          reactions: comment.reactions,
+          totalReactions: comment.reactions.length 
+        },
+        message: 'Reaction removed successfully' 
+      });
+    } catch (error) {
+      console.error('Remove reaction error:', error);
+      res.status(500).json({ success: false, error: 'Failed to remove reaction' });
     }
   });
 

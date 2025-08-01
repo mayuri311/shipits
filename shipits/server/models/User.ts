@@ -109,11 +109,13 @@ const UserSchema = new Schema<IUser>({
   },
   password: {
     type: String,
+    required: true,
     minlength: 6,
     select: false // Don't include password in queries by default
   },
   fullName: {
     type: String,
+    required: true,
     trim: true,
     maxlength: 100
   },

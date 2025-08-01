@@ -43,6 +43,7 @@ export interface IProject extends Document {
   media: IProjectMedia[];
   updates: IProjectUpdate[];
   analytics: IProjectAnalytics;
+  likes: Types.ObjectId[];  // Array of user IDs who liked this project
   createdAt: Date;
   updatedAt: Date;
   lastActivityAt: Date;
@@ -55,6 +56,8 @@ export interface IProject extends Document {
   incrementViews(userId?: Types.ObjectId): Promise<void>;
   addCollaborator(userId: Types.ObjectId): Promise<void>;
   removeCollaborator(userId: Types.ObjectId): Promise<void>;
+  addLike(userId: Types.ObjectId): Promise<void>;
+  removeLike(userId: Types.ObjectId): Promise<void>;
 }
 
 const ProjectMediaSchema = new Schema<IProjectMedia>({
@@ -198,6 +201,10 @@ const ProjectSchema = new Schema<IProject>({
     type: ProjectAnalyticsSchema,
     default: {}
   },
+  likes: [{
+    type: Schema.Types.ObjectId,
+    ref: 'User'
+  }],
   lastActivityAt: {
     type: Date,
     default: Date.now,
@@ -310,6 +317,20 @@ ProjectSchema.methods.addCollaborator = async function(userId: Types.ObjectId): 
 
 ProjectSchema.methods.removeCollaborator = async function(userId: Types.ObjectId): Promise<void> {
   this.collaborators = this.collaborators.filter(id => !id.equals(userId));
+  await this.save();
+};
+
+ProjectSchema.methods.addLike = async function(userId: Types.ObjectId): Promise<void> {
+  if (!this.likes.some(id => id.equals(userId))) {
+    this.likes.push(userId);
+    this.analytics.totalLikes = this.likes.length;
+    await this.save();
+  }
+};
+
+ProjectSchema.methods.removeLike = async function(userId: Types.ObjectId): Promise<void> {
+  this.likes = this.likes.filter(id => !id.equals(userId));
+  this.analytics.totalLikes = this.likes.length;
   await this.save();
 };
 

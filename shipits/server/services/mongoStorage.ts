@@ -38,6 +38,7 @@ export interface IMongoStorage {
   createProjectUpdate(updateData: any): Promise<any>;
   
   // Comment operations
+  getComment(id: string): Promise<CommentType | null>;
   getProjectComments(projectId: string, filters?: CommentFilters): Promise<CommentType[]>;
   createComment(commentData: CreateComment): Promise<CommentType>;
   updateComment(id: string, content: string, userId: string): Promise<CommentType | null>;
@@ -346,6 +347,18 @@ export class MongoStorage implements IMongoStorage {
   }
 
   // Comment operations
+  async getComment(id: string): Promise<CommentType | null> {
+    try {
+      const comment = await Comment.findById(id)
+        .populate('authorId', 'username fullName profileImage')
+        .lean();
+      return comment;
+    } catch (error) {
+      console.error('Error getting comment:', error);
+      return null;
+    }
+  }
+
   async getProjectComments(projectId: string, filters: CommentFilters = {}): Promise<CommentType[]> {
     try {
       const query: any = {

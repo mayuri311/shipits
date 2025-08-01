@@ -16,8 +16,8 @@ const API_BASE = '/api';
 // Helper function to handle API responses
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
-    const error = await response.json().catch(() => ({ message: 'Network error' }));
-    throw new Error(error.message || `HTTP ${response.status}`);
+    const error = await response.json().catch(() => ({ error: 'Network error' }));
+    throw new Error(error.error || error.message || `HTTP ${response.status}`);
   }
   return response.json();
 }

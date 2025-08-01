@@ -74,6 +74,37 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
     e.preventDefault();
     setIsLoading(true);
     
+    // Client-side validation
+    if (!registerData.username || !registerData.email || !registerData.password || !registerData.fullName) {
+      toast({
+        title: "Missing Information",
+        description: "Please fill in all required fields.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    if (registerData.password.length < 6) {
+      toast({
+        title: "Password Too Short",
+        description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
+
+    if (registerData.username.length < 3) {
+      toast({
+        title: "Username Too Short",
+        description: "Username must be at least 3 characters long.",
+        variant: "destructive",
+      });
+      setIsLoading(false);
+      return;
+    }
+    
     try {
       await register(registerData);
       toast({
@@ -82,6 +113,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
       });
       onClose();
     } catch (error) {
+      console.error('Registration error:', error);
       toast({
         title: "Registration Failed",
         description: error instanceof Error ? error.message : "Please check your information and try again.",
