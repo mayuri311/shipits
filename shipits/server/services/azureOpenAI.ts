@@ -16,8 +16,11 @@ export interface ThreadSummaryConfig {
     status: string;
     ownerName: string;
     createdAt: Date;
+    updateCount?: number;
+    commentCount?: number;
   };
   commentCount?: number;
+  updateCount?: number;
 }
 
 export class AzureOpenAIService {
@@ -42,10 +45,12 @@ export class AzureOpenAIService {
       this.client = new OpenAI({
         apiKey: apiKey,
         baseURL: `${endpoint.replace(/\/$/, '')}/openai/deployments/${deployment}`,
-        defaultQuery: { 'api-version': '2024-02-01' },
+        defaultQuery: { 'api-version': '2024-10-21' }, // Use stable GA API version
         defaultHeaders: {
           'api-key': apiKey,
         },
+        timeout: 30000, // 30 second timeout
+        maxRetries: 2,  // Retry failed requests
       });
       this.deploymentName = deployment;
       console.log('✅ Azure OpenAI service initialized successfully');
@@ -60,11 +65,12 @@ export class AzureOpenAIService {
    * Generate a summary of a comment thread
    */
   async generateThreadSummary(
-    comments: Array<{ 
-      content: string; 
-      authorName: string; 
+    content: Array<{ 
+      content?: string;
+      title?: string;
+      authorName?: string; 
       createdAt: Date;
-      type?: string;
+      type: 'comment' | 'update';
       depth?: number;
       isPinned?: boolean;
       isQuestion?: boolean;
@@ -79,8 +85,8 @@ export class AzureOpenAIService {
         throw new Error('Azure OpenAI service is not properly initialized. Please check your configuration.');
       }
       
-      if (comments.length === 0) {
-        return 'No comments in this thread yet.';
+      if (content.length === 0) {
+        return 'No activity in this project yet.';
       }
 
       // Prepare project context
@@ -92,11 +98,19 @@ Tags: ${config.projectContext.tags.join(', ')}
 Status: ${config.projectContext.status}
 Owner: ${config.projectContext.ownerName}
 Created: ${config.projectContext.createdAt.toLocaleDateString()}
+Updates: ${config.updateCount || 0} project updates
+Comments: ${config.commentCount || 0} discussion comments
 ` : '';
 
       // Prepare the conversation context with hierarchy and metadata
-      const conversationText = comments
-        .map(comment => comment.formattedText || `${comment.authorName}: ${comment.content}`)
+      const conversationText = content
+        .map(item => {
+          if (item.type === 'update') {
+            return `[PROJECT UPDATE] ${item.title}: ${item.content}`;
+          } else {
+            return item.formattedText || `${item.authorName}: ${item.content}`;
+          }
+        })
         .join('\n');
 
       // Enhanced system prompt for better context understanding
@@ -106,15 +120,18 @@ Your task is to analyze the project context and comment thread to provide a mean
 
 ANALYSIS GUIDELINES:
 - Understand the project's purpose and current status
+- Analyze project updates for progress, milestones, and announcements
 - Identify key discussion themes, technical issues, and solutions
 - Note important questions and whether they were resolved
 - Highlight community engagement (reactions, participation patterns)
 - Recognize threaded conversations and their relationships
+- Track project evolution through updates and user feedback
 - Identify consensus, disagreements, or unresolved topics
 
 SUMMARY STRUCTURE:
 - Keep summaries 3-4 sentences (75-100 words)
 - Start with project context if relevant
+- Highlight significant project updates and progress
 - Include main discussion points and outcomes
 - Mention key technical insights or decisions
 - Note community engagement level
@@ -127,11 +144,11 @@ FORMATTING:
 - Note conversation patterns (Q&A, debates, collaborations)
 `.trim();
 
-      const userPrompt = `${projectInfo}
-DISCUSSION THREAD (${config.commentCount || comments.length} comments):
+              const userPrompt = `${projectInfo}
+PROJECT ACTIVITY (${config.updateCount || 0} updates, ${config.commentCount || 0} comments):
 ${conversationText}
 
-Please provide a comprehensive summary that captures the project context and key discussion points:`;
+Please provide a comprehensive summary that captures the project context, key updates, and discussion highlights:`;
 
       console.log('Azure OpenAI Request:', {
         endpoint: process.env.AZURE_OPENAI_ENDPOINT,

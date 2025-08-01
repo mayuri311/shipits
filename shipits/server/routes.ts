@@ -592,15 +592,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
 
-      // Get project comments
+      // Get project details and comments
+      const project = await mongoStorage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ 
+          success: false, 
+          error: 'Project not found' 
+        });
+      }
+
       const comments = await mongoStorage.getProjectComments(req.params.id);
+      const updates = await mongoStorage.getProjectUpdates(req.params.id);
       
-      if (comments.length === 0) {
+      if (comments.length === 0 && updates.length === 0) {
         return res.json({ 
           success: true, 
           data: { 
-            summary: 'No comments to summarize yet.',
+            summary: 'No comments or updates to summarize yet.',
             commentCount: 0,
+            updateCount: 0,
             generated: true
           } 
         });
@@ -608,33 +618,69 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Check if we need to generate/update summary
       const existingSummary = await ThreadSummary.findByProject(req.params.id);
-      const latestComment = comments
-        .sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0];
+      
+      // Find the latest activity (comment or update)
+      const latestComment = comments.length > 0 ? 
+        comments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] : null;
+      const latestUpdate = updates.length > 0 ? 
+        updates.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())[0] : null;
+      
+      const totalActivityCount = comments.length + updates.length;
+      const latestActivityId = latestComment && latestUpdate ? 
+        (new Date(latestComment.createdAt) > new Date(latestUpdate.createdAt) ? latestComment._id : latestUpdate._id) :
+        (latestComment?._id || latestUpdate?._id);
 
-      if (existingSummary && !existingSummary.needsUpdate(comments.length, latestComment._id)) {
+      if (existingSummary && latestActivityId && !existingSummary.needsUpdate(totalActivityCount, latestActivityId)) {
         return res.json({ 
           success: true, 
           data: { 
             summary: existingSummary.summary,
             lastUpdated: existingSummary.lastUpdated,
             commentCount: existingSummary.commentCount,
+            updateCount: updates.length,
             generated: false // Using cached version
           } 
         });
       }
 
+      // Prepare project context for AI
+      const projectContext = {
+        title: project.title,
+        description: project.description,
+        tags: project.tags || [],
+        status: project.status,
+        ownerName: project.ownerId?.fullName || project.ownerId?.username || 'Unknown',
+        createdAt: new Date(project.createdAt),
+        updateCount: updates.length,
+        commentCount: comments.length
+      };
+
+      // Prepare project updates for AI processing
+      const updatesForAI = updates.map((update: any) => ({
+        title: update.title,
+        content: update.content,
+        createdAt: new Date(update.createdAt),
+        type: 'update'
+      }));
+
       // Prepare comments for AI processing
       const commentsForAI = comments.map((comment: any) => ({
         content: comment.content,
         authorName: comment.authorId?.fullName || comment.authorId?.username || 'Anonymous',
-        createdAt: new Date(comment.createdAt)
+        createdAt: new Date(comment.createdAt),
+        type: 'comment'
       }));
 
+      // Combine updates and comments chronologically for comprehensive context
+      const allContent = [...updatesForAI, ...commentsForAI]
+        .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
       // Generate summary using Azure OpenAI with full context
-      const generatedSummary = await azureOpenAIService.generateThreadSummary(commentsForAI, {
+      const generatedSummary = await azureOpenAIService.generateThreadSummary(allContent, {
         projectContext,
         commentCount: comments.length,
-        maxTokens: 200, // Increased for richer context
+        updateCount: updates.length,
+        maxTokens: 250, // Increased for richer context with updates
         temperature: 0.3
       });
 
@@ -642,8 +688,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const savedSummary = await ThreadSummary.createOrUpdate(
         req.params.id,
         generatedSummary,
-        comments.length,
-        latestComment._id
+        totalActivityCount,
+        latestActivityId
       );
 
       res.json({ 
@@ -651,7 +697,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { 
           summary: savedSummary.summary,
           lastUpdated: savedSummary.lastUpdated,
-          commentCount: savedSummary.commentCount,
+          commentCount: comments.length,
+          updateCount: updates.length,
           generated: true
         },
         message: 'Thread summary generated successfully' 
@@ -708,6 +755,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/comments/:id/reaction', requireAuth, async (req, res) => {
     try {
       const { type = 'like' } = req.body;
+      console.log('Adding reaction:', { commentId: req.params.id, userId: req.session.userId, type });
+      
       const comment = await mongoStorage.getComment(req.params.id);
       if (!comment) {
         return res.status(404).json({ success: false, error: 'Comment not found' });
@@ -715,11 +764,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await comment.addReaction(new Types.ObjectId(req.session.userId), type);
       
+      // Refresh the comment to get updated reactions
+      const updatedComment = await mongoStorage.getComment(req.params.id);
+      
+      console.log('Reaction added successfully:', { 
+        commentId: req.params.id, 
+        totalReactions: updatedComment?.reactions?.length || 0 
+      });
+      
       res.json({ 
         success: true, 
         data: { 
-          reactions: comment.reactions,
-          totalReactions: comment.reactions.length 
+          reactions: updatedComment?.reactions || [],
+          totalReactions: updatedComment?.reactions?.length || 0
         },
         message: 'Reaction added successfully' 
       });
@@ -731,6 +788,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/comments/:id/reaction', requireAuth, async (req, res) => {
     try {
+      console.log('Removing reaction:', { commentId: req.params.id, userId: req.session.userId });
+      
       const comment = await mongoStorage.getComment(req.params.id);
       if (!comment) {
         return res.status(404).json({ success: false, error: 'Comment not found' });
@@ -738,11 +797,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await comment.removeReaction(new Types.ObjectId(req.session.userId));
       
+      // Refresh the comment to get updated reactions
+      const updatedComment = await mongoStorage.getComment(req.params.id);
+      
+      console.log('Reaction removed successfully:', { 
+        commentId: req.params.id, 
+        totalReactions: updatedComment?.reactions?.length || 0 
+      });
+      
       res.json({ 
         success: true, 
         data: { 
-          reactions: comment.reactions,
-          totalReactions: comment.reactions.length 
+          reactions: updatedComment?.reactions || [],
+          totalReactions: updatedComment?.reactions?.length || 0
         },
         message: 'Reaction removed successfully' 
       });

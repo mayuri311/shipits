@@ -365,8 +365,7 @@ export class MongoStorage implements IMongoStorage {
   async getComment(id: string): Promise<CommentType | null> {
     try {
       const comment = await Comment.findById(id)
-        .populate('authorId', 'username fullName profileImage')
-        .lean();
+        .populate('authorId', 'username fullName profileImage');
       return comment;
     } catch (error) {
       console.error('Error getting comment:', error);

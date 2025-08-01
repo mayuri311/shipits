@@ -59,24 +59,31 @@ export function CommentThread({
 
     try {
       const userReaction = comment.reactions?.find(r => r.userId === user?._id);
+      console.log('Current user reaction:', userReaction, 'User ID:', user?._id);
+      
       const response = userReaction 
         ? await commentsApi.removeReaction(comment._id)
         : await commentsApi.addReaction(comment._id, 'like');
 
+      console.log('Reaction API response:', response);
+
       if (response.success && onReactionUpdate) {
         onReactionUpdate(comment._id, response.data.reactions);
         toast({
-          title: userReaction ? "Reaction Removed" : "Reaction Added",
+          title: userReaction ? "❤️ Removed" : "❤️ Liked",
           description: userReaction 
-            ? "Removed your reaction from this comment."
-            : "Added your reaction to this comment.",
+            ? "Removed your heart from this comment."
+            : "Hearted this comment!",
         });
+      } else {
+        throw new Error(response.error || 'Failed to update reaction');
       }
     } catch (err) {
       console.error('Error updating reaction:', err);
+      const errorMessage = err instanceof Error ? err.message : 'Unknown error occurred';
       toast({
         title: "Error",
-        description: "Failed to update reaction. Please try again.",
+        description: `Failed to update reaction: ${errorMessage}`,
         variant: "destructive",
       });
     } finally {
