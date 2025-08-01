@@ -10,7 +10,7 @@ Add the following variables to your `.env` file:
 # Azure OpenAI Configuration
 AZURE_OPENAI_ENDPOINT=https://your-resource-name.openai.azure.com/
 AZURE_OPENAI_API_KEY=your-api-key-here
-AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4
+AZURE_OPENAI_DEPLOYMENT_NAME=gpt-4o
 
 # Optional: Custom configuration
 AZURE_OPENAI_MAX_TOKENS=150
@@ -29,7 +29,7 @@ AZURE_OPENAI_TEMPERATURE=0.3
 1. Go to Azure OpenAI Studio
 2. Navigate to "Deployments"
 3. Create a new deployment with:
-   - Model: `gpt-4` or `gpt-3.5-turbo`
+   - Model: `gpt-4o` (recommended) or `gpt-4`
    - Deployment name: (remember this for `AZURE_OPENAI_DEPLOYMENT_NAME`)
 
 ### 3. Get Your Credentials
@@ -45,7 +45,7 @@ AZURE_OPENAI_TEMPERATURE=0.3
 |----------|----------|-------------|---------|
 | `AZURE_OPENAI_ENDPOINT` | ✅ | Your Azure OpenAI resource endpoint | `https://myresource.openai.azure.com/` |
 | `AZURE_OPENAI_API_KEY` | ✅ | API key from Azure Portal | `abc123def456...` |
-| `AZURE_OPENAI_DEPLOYMENT_NAME` | ✅ | Name of your model deployment | `gpt-4` |
+| `AZURE_OPENAI_DEPLOYMENT_NAME` | ✅ | Name of your model deployment | `gpt-4o` |
 | `AZURE_OPENAI_MAX_TOKENS` | ❌ | Max tokens for summary (default: 150) | `200` |
 | `AZURE_OPENAI_TEMPERATURE` | ❌ | Creativity level (default: 0.3) | `0.5` |
 

@@ -19,7 +19,7 @@ export class AzureOpenAIService {
   constructor() {
     const endpoint = process.env.AZURE_OPENAI_ENDPOINT;
     const apiKey = process.env.AZURE_OPENAI_API_KEY;
-    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4';
+    const deployment = process.env.AZURE_OPENAI_DEPLOYMENT_NAME || 'gpt-4o';
 
     if (!endpoint || !apiKey) {
       throw new Error('Azure OpenAI credentials not configured. Please check your .env file.');
