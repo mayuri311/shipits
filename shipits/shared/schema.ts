@@ -21,7 +21,7 @@ export const userSchema = z.object({
     'Other'
   ]).optional(),
   graduationYear: z.number().min(2020).max(2035).optional(),
-  profileImage: z.string().url().optional(),
+  profileImage: z.string().optional().nullable(),
   bio: z.string().max(500).optional(),
   contactInfo: z.object({
     phone: z.string().optional(),
@@ -83,6 +83,8 @@ export const projectSchema = z.object({
   analytics: z.object({
     views: z.number().default(0),
     uniqueViewers: z.array(z.instanceof(Types.ObjectId)).optional(),
+    shares: z.number().default(0),
+    sharesByPlatform: z.record(z.number()).optional(),
     totalComments: z.number().default(0),
     totalLikes: z.number().default(0),
     subscribers: z.number().default(0)

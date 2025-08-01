@@ -53,6 +53,7 @@ export interface IMongoStorage {
   
   // Analytics operations
   recordProjectView(projectId: string, userId?: string): Promise<void>;
+  recordProjectShare(projectId: string, platform: string, userId?: string): Promise<void>;
   getProjectAnalytics(projectId: string): Promise<any>;
   getTrendingProjects(): Promise<ProjectType[]>;
   
@@ -109,6 +110,11 @@ export class MongoStorage implements IMongoStorage {
 
   async updateUser(id: string, updates: UpdateUser): Promise<UserType | null> {
     try {
+      // Handle profile image removal (null or empty string should unset the field)
+      if (updates.profileImage === null || updates.profileImage === '') {
+        updates.profileImage = undefined;
+      }
+      
       const user = await User.findByIdAndUpdate(id, updates, { new: true });
       return user ? user.toObject() : null;
     } catch (error) {
@@ -560,6 +566,23 @@ export class MongoStorage implements IMongoStorage {
       }
     } catch (error) {
       console.error('Error recording project view:', error);
+    }
+  }
+
+  async recordProjectShare(projectId: string, platform: string, userId?: string): Promise<void> {
+    try {
+      const userObjectId = userId ? new Types.ObjectId(userId) : undefined;
+      
+      // Update detailed analytics in ProjectAnalytics collection
+      await ProjectAnalytics.recordShare(new Types.ObjectId(projectId), platform);
+      
+      // Also update the project's own analytics.shares field
+      const project = await Project.findById(projectId);
+      if (project) {
+        await project.incrementShares(platform, userObjectId);
+      }
+    } catch (error) {
+      console.error('Error recording project share:', error);
     }
   }
 

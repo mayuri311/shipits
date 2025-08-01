@@ -39,7 +39,15 @@ export default function Profile() {
   const handleSave = async () => {
     if (!user?._id) return;
     try {
-      const response = await usersApi.updateUser(user._id.toString(), editedProfile);
+      // Prepare the update data, handling profile image properly
+      const updateData = { ...editedProfile };
+      
+      // If profile image is explicitly set to null, we want to remove it
+      if (updateData.profileImage === null) {
+        updateData.profileImage = '';
+      }
+      
+      const response = await usersApi.updateUser(user._id.toString(), updateData);
       if (response.success) {
         updateUser(response.data.user);
         setIsEditing(false);
@@ -109,7 +117,7 @@ export default function Profile() {
   };
 
   const handleRemoveProfilePicture = () => {
-    setEditedProfile(prev => ({ ...prev, profileImage: "" }));
+    setEditedProfile(prev => ({ ...prev, profileImage: null }));
     toast({
       title: "Profile picture removed",
       description: "Your profile picture will be removed when you save changes.",
@@ -176,19 +184,29 @@ export default function Profile() {
             <div className="flex items-start justify-between mb-6">
               <div className="flex items-center gap-6">
                 <div className="relative group">
-                  {(editedProfile.profileImage || user.profileImage) ? (
+                  {(isOwnProfile && isEditing ? editedProfile.profileImage : user.profileImage) ? (
                     <img
-                      src={editedProfile.profileImage || user.profileImage}
+                      src={isOwnProfile && isEditing ? editedProfile.profileImage || user.profileImage : user.profileImage}
                       alt={user.fullName || 'Profile'}
                       className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
+                      onError={(e) => {
+                        // Fallback to default avatar if image fails to load
+                        e.currentTarget.style.display = 'none';
+                        const fallback = e.currentTarget.nextElementSibling as HTMLElement;
+                        if (fallback) fallback.style.display = 'flex';
+                      }}
                     />
-                  ) : (
-                    <div className="w-24 h-24 bg-maroon rounded-full flex items-center justify-center">
-                      <span className="text-white text-2xl font-bold">
-                        {user.fullName?.split(' ').map(n => n[0]).join('')}
-                      </span>
-                    </div>
-                  )}
+                  ) : null}
+                  
+                  <div 
+                    className={`w-24 h-24 bg-maroon rounded-full flex items-center justify-center ${
+                      (isOwnProfile && isEditing ? editedProfile.profileImage : user.profileImage) ? 'hidden' : ''
+                    }`}
+                  >
+                    <span className="text-white text-2xl font-bold">
+                      {user.fullName?.split(' ').map(n => n[0]).join('') || user.username?.charAt(0).toUpperCase() || 'U'}
+                    </span>
+                  </div>
                   
                   {isOwnProfile && isEditing && (
                     <>
@@ -212,7 +230,7 @@ export default function Profile() {
                     </>
                   )}
                   
-                  {isOwnProfile && isEditing && (editedProfile.profileImage || user.profileImage) && (
+                  {isOwnProfile && isEditing && (editedProfile.profileImage !== null && (editedProfile.profileImage || user.profileImage)) && (
                     <Button
                       variant="outline"
                       size="sm"

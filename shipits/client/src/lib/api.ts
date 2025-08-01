@@ -201,6 +201,16 @@ export const projectsApi = {
     });
     return handleResponse(response);
   },
+
+  async recordShare(id: string, platform: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/projects/${id}/share`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ platform }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // File Upload API

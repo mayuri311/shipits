@@ -136,6 +136,8 @@ export async function seedDatabase(): Promise<void> {
       analytics: {
         views: 0,
         uniqueViewers: [],
+        shares: 0,
+        sharesByPlatform: new Map(),
         totalComments: 0,
         totalLikes: 0,
         subscribers: 0

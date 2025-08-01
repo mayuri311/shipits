@@ -13,6 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CommentThread } from "@/components/CommentThread";
 import { ThreadSummary } from "@/components/ThreadSummary";
+import { ShareButton } from "@/components/ShareButton";
 import type { Project, Comment } from "@shared/schema";
 
 export default function ProjectDetail() {
@@ -44,6 +45,26 @@ export default function ProjectDetail() {
     commentId: "",
     commentContent: "",
   });
+
+  const handleShare = async (platform: string) => {
+    if (!project) return;
+    
+    try {
+      await projectsApi.recordShare(project._id, platform);
+      
+      // Update the project's share count in local state
+      setProject(prev => prev ? {
+        ...prev,
+        analytics: {
+          ...prev.analytics,
+          shares: (prev.analytics?.shares || 0) + 1
+        }
+      } : null);
+    } catch (error) {
+      console.error('Failed to record share:', error);
+      // Don't show error to user since sharing still works
+    }
+  };
 
   useEffect(() => {
     if (id) {
@@ -435,10 +456,14 @@ export default function ProjectDetail() {
                   {isSubscribed ? "Subscribed" : "Subscribe"}
                 </Button>
               )}
-              <Button variant="outline" size="sm">
-                <Share2 className="w-4 h-4 mr-2" />
-                Share
-              </Button>
+              <ShareButton
+                title={project.title}
+                description={project.description}
+                hashtags={project.tags}
+                onShare={handleShare}
+                variant="outline"
+                size="sm"
+              />
             </div>
           </div>
         </div>
@@ -513,6 +538,10 @@ export default function ProjectDetail() {
                     <div className="flex items-center gap-2 text-gray-600">
                       <Eye className="w-5 h-5" />
                       <span>{project.analytics?.views || 0} views</span>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <Share2 className="w-5 h-5" />
+                      <span>{project.analytics?.shares || 0} shares</span>
                     </div>
                   </div>
                   <div className="text-sm text-gray-500">

@@ -27,6 +27,8 @@ export interface IProjectUpdate {
 export interface IProjectAnalytics {
   views: number;
   uniqueViewers: Types.ObjectId[];
+  shares: number;
+  sharesByPlatform: Map<string, number>;
   totalComments: number;
   totalLikes: number;
   subscribers: number;
@@ -54,6 +56,7 @@ export interface IProject extends Document {
   // Methods
   addUpdate(update: Partial<IProjectUpdate>): Promise<void>;
   incrementViews(userId?: Types.ObjectId): Promise<void>;
+  incrementShares(platform: string, userId?: Types.ObjectId): Promise<void>;
   addCollaborator(userId: Types.ObjectId): Promise<void>;
   removeCollaborator(userId: Types.ObjectId): Promise<void>;
   addLike(userId: Types.ObjectId): Promise<void>;
@@ -142,6 +145,16 @@ const ProjectAnalyticsSchema = new Schema<IProjectAnalytics>({
     type: Schema.Types.ObjectId,
     ref: 'User'
   }],
+  shares: {
+    type: Number,
+    default: 0,
+    min: 0
+  },
+  sharesByPlatform: {
+    type: Map,
+    of: Number,
+    default: new Map()
+  },
   totalComments: {
     type: Number,
     default: 0,
@@ -304,6 +317,16 @@ ProjectSchema.methods.incrementViews = async function(userId?: Types.ObjectId): 
   if (userId && !this.analytics.uniqueViewers.includes(userId)) {
     this.analytics.uniqueViewers.push(userId);
   }
+  
+  await this.save();
+};
+
+ProjectSchema.methods.incrementShares = async function(platform: string, userId?: Types.ObjectId): Promise<void> {
+  this.analytics.shares += 1;
+  
+  // Track shares by platform
+  const currentCount = this.analytics.sharesByPlatform.get(platform) || 0;
+  this.analytics.sharesByPlatform.set(platform, currentCount + 1);
   
   await this.save();
 };

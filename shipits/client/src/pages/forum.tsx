@@ -352,9 +352,14 @@ export default function Forum() {
                             {project.analytics?.totalComments || 0}
                           </span>
                         </div>
-                        <span className="flex items-center gap-1">
-                          👁️ {project.analytics?.views || 0}
-                        </span>
+                        <div className="flex items-center gap-4">
+                          <span className="flex items-center gap-1">
+                            👁️ {project.analytics?.views || 0}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            📤 {project.analytics?.shares || 0}
+                          </span>
+                        </div>
                       </div>
                     </div>
                   </Link>

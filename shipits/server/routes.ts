@@ -400,6 +400,54 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Debug endpoint for Azure OpenAI testing
+  app.get('/api/debug/azure-openai', requireAuth, async (req, res) => {
+    try {
+      const { azureOpenAIService } = await import('./services/azureOpenAI');
+      
+      console.log('Debug: Testing Azure OpenAI connection');
+      console.log('Environment variables check:', {
+        hasEndpoint: !!process.env.AZURE_OPENAI_ENDPOINT,
+        endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+        hasApiKey: !!process.env.AZURE_OPENAI_API_KEY,
+        apiKeyLength: process.env.AZURE_OPENAI_API_KEY?.length,
+        deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
+        isConfigured: azureOpenAIService.isConfigured()
+      });
+
+      // Test with a simple conversation
+      const testComments = [
+        { content: 'This project looks interesting!', authorName: 'TestUser1', createdAt: new Date() },
+        { content: 'I agree, the UI design is really clean.', authorName: 'TestUser2', createdAt: new Date() }
+      ];
+      
+      const summary = await azureOpenAIService.generateThreadSummary(testComments);
+      
+      res.json({ 
+        success: true, 
+        data: { 
+          summary,
+          connectionTest: 'passed',
+          endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+          deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME
+        } 
+      });
+    } catch (error: any) {
+      console.error('Azure OpenAI debug test failed:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: error.message,
+        details: {
+          endpoint: process.env.AZURE_OPENAI_ENDPOINT,
+          hasApiKey: !!process.env.AZURE_OPENAI_API_KEY,
+          deployment: process.env.AZURE_OPENAI_DEPLOYMENT_NAME,
+          errorType: error.constructor.name,
+          errorCode: error.code || error.status
+        }
+      });
+    }
+  });
+
   // Thread Summary Routes
   app.get('/api/projects/:id/summary', async (req, res) => {
     try {
@@ -516,6 +564,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: false, 
         error: 'Failed to generate thread summary. Please try again later.' 
       });
+    }
+  });
+
+  // Project Share Routes
+  app.post('/api/projects/:id/share', async (req, res) => {
+    try {
+      const { platform } = req.body;
+      const userId = req.session.userId;
+      
+      if (!platform) {
+        return res.status(400).json({ success: false, error: 'Platform is required' });
+      }
+
+      // Validate platform
+      const validPlatforms = ['twitter', 'facebook', 'linkedin', 'reddit', 'whatsapp', 'email', 'copy', 'native'];
+      if (!validPlatforms.includes(platform)) {
+        return res.status(400).json({ success: false, error: 'Invalid platform' });
+      }
+
+      // Record the share
+      await mongoStorage.recordProjectShare(req.params.id, platform, userId);
+
+      res.json({ 
+        success: true, 
+        message: 'Share recorded successfully' 
+      });
+    } catch (error) {
+      console.error('Record share error:', error);
+      res.status(500).json({ success: false, error: 'Failed to record share' });
     }
   });
 

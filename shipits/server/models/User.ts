@@ -142,12 +142,16 @@ const UserSchema = new Schema<IUser>({
   profileImage: {
     type: String,
     trim: true,
+    default: null,
     validate: {
       validator: function(url: string) {
-        if (!url) return true;
-        return /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)$/i.test(url);
+        if (!url || url === null) return true;
+        // Accept both HTTP/HTTPS URLs and Base64 data URLs
+        const urlPattern = /^https?:\/\/.+\.(jpg|jpeg|png|gif|webp)$/i;
+        const base64Pattern = /^data:image\/(jpeg|jpg|png|gif|webp);base64,/i;
+        return urlPattern.test(url) || base64Pattern.test(url);
       },
-      message: 'Invalid image URL format'
+      message: 'Invalid image format. Must be a valid URL or Base64 data URL'
     }
   },
   bio: {
