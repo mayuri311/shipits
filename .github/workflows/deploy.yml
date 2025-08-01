@@ -1,0 +1,37 @@
+name: Deploy to AWS
+
+on:
+  push:
+    branches: [ thomas-dev-server ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Configure AWS credentials
+      uses: aws-actions/configure-aws-credentials@v2
+      with:
+        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        aws-region: us-east-1
+        
+    - name: Deploy to AWS App Runner
+      uses: awslabs/amazon-app-runner-deploy@main
+      with:
+        service: shipits-forum
+        source-connection-arn: ${{ secrets.AWS_CONNECTION_SOURCE_ARN }}
+        repo: https://github.com/${{ github.repository }}
+        branch: ${{ github.ref }}
+        runtime: NODEJS_18
+        build-command: cd shipits && npm install && cd client && npm run build
+        start-command: cd shipits && npm start
+        port: 3555
+        region: us-east-1
+        cpu: 1
+        memory: 2
+        wait-for-service-stability-seconds: 600

@@ -1,15 +1,16 @@
 version: 1.0
-runtime: nodejs18
+runtime: nodejs20
 build:
   commands:
     build:
-      - echo "Installing dependencies..."
-      - cd shipits && npm install
-      - echo "Building client..."
-      - cd client && npm run build
-      - echo "Build complete"
+      - echo "🚀 Starting build process..."
+      - echo "📦 Installing dependencies..."
+      - cd shipits && npm ci
+      - echo "🏗️ Building application..."
+      - npm run build
+      - echo "✅ Build complete!"
 run:
-  runtime-version: 18
+  runtime-version: 20
   command: cd shipits && npm start
   network:
     port: 3555
