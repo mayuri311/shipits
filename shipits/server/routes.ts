@@ -10,7 +10,7 @@ import { fileURLToPath } from "url";
 import { Types } from "mongoose";
 import { 
   loginSchema, registerSchema, createProjectSchema, createCommentSchema, 
-  createEventSchema, updateUserSchema, updateProjectSchema,
+  createEventSchema, updateUserSchema, updateProjectSchema, contactSchema,
   type ApiResponse, type PaginatedResponse 
 } from "@shared/schema";
 
@@ -33,6 +33,83 @@ const requireAuth = (req: any, res: any, next: any) => {
   }
   next();
 };
+
+// Helper functions for AI summary context building
+function buildCommentHierarchy(comments: any[]) {
+  const commentMap = new Map();
+  const rootComments: any[] = [];
+
+  // First pass: create map of all comments
+  comments.forEach(comment => {
+    commentMap.set(comment._id.toString(), {
+      ...comment,
+      replies: []
+    });
+  });
+
+  // Second pass: build hierarchy
+  comments.forEach(comment => {
+    const commentWithReplies = commentMap.get(comment._id.toString());
+    
+    if (comment.parentCommentId) {
+      const parent = commentMap.get(comment.parentCommentId.toString());
+      if (parent) {
+        parent.replies.push(commentWithReplies);
+      }
+    } else {
+      rootComments.push(commentWithReplies);
+    }
+  });
+
+  return rootComments;
+}
+
+function formatCommentsForAI(commentHierarchy: any[]): any[] {
+  const formattedComments: any[] = [];
+
+  function processComment(comment: any, depth = 0) {
+    const indent = '  '.repeat(depth);
+    const authorName = comment.authorId?.fullName || comment.authorId?.username || 'Anonymous';
+    const commentType = comment.type !== 'general' ? ` [${comment.type.toUpperCase()}]` : '';
+    const isPinned = comment.tags?.isPinned ? ' [PINNED]' : '';
+    const isQuestion = comment.tags?.isQuestion ? ' [QUESTION]' : '';
+    const isAnswered = comment.tags?.isAnswered ? ' [ANSWERED]' : '';
+    const reactionCount = comment.reactions?.length || 0;
+    const reactionInfo = reactionCount > 0 ? ` (${reactionCount} reactions)` : '';
+    
+    formattedComments.push({
+      content: comment.content,
+      authorName,
+      createdAt: new Date(comment.createdAt),
+      type: comment.type,
+      depth,
+      isPinned: comment.tags?.isPinned || false,
+      isQuestion: comment.tags?.isQuestion || false,
+      isAnswered: comment.tags?.isAnswered || false,
+      reactionCount,
+      formattedText: `${indent}${authorName}${commentType}${isPinned}${isQuestion}${isAnswered}${reactionInfo}: ${comment.content}`,
+      hasReplies: comment.replies && comment.replies.length > 0
+    });
+
+    // Process replies
+    if (comment.replies && comment.replies.length > 0) {
+      comment.replies
+        .sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+        .forEach((reply: any) => processComment(reply, depth + 1));
+    }
+  }
+
+  commentHierarchy
+    .sort((a, b) => {
+      // Sort by pinned first, then by creation date
+      if (a.tags?.isPinned && !b.tags?.isPinned) return -1;
+      if (!a.tags?.isPinned && b.tags?.isPinned) return 1;
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    })
+    .forEach(comment => processComment(comment));
+
+  return formattedComments;
+}
 
 // Middleware for admin authentication
 const requireAdmin = async (req: any, res: any, next: any) => {
@@ -553,8 +630,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         createdAt: new Date(comment.createdAt)
       }));
 
-      // Generate summary using Azure OpenAI
-      const generatedSummary = await azureOpenAIService.generateThreadSummary(commentsForAI);
+      // Generate summary using Azure OpenAI with full context
+      const generatedSummary = await azureOpenAIService.generateThreadSummary(commentsForAI, {
+        projectContext,
+        commentCount: comments.length,
+        maxTokens: 200, // Increased for richer context
+        temperature: 0.3
+      });
 
       // Save summary to database
       const savedSummary = await ThreadSummary.createOrUpdate(
@@ -968,6 +1050,90 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('File upload error:', error);
       res.status(500).json({ success: false, error: 'Failed to process files' });
+    }
+  });
+
+  // Contact Form Submission
+  app.post('/api/contact', validateBody(contactSchema), async (req, res) => {
+    try {
+      const { name, email, message } = req.body;
+      
+      // Create contact submission
+      const contact = new Contact({
+        name,
+        email,
+        message
+      });
+      
+      await contact.save();
+      
+      console.log('📧 New contact form submission:', { name, email, message: message.substring(0, 50) + '...' });
+      
+      res.status(201).json({
+        success: true,
+        message: 'Contact form submitted successfully',
+        data: {
+          id: contact._id,
+          createdAt: contact.createdAt
+        }
+      });
+      
+    } catch (error) {
+      console.error('Contact form submission error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to submit contact form'
+      });
+    }
+  });
+
+  // Admin: Get all contact form submissions (protected route)
+  app.get('/api/admin/contacts', requireAuth, async (req, res) => {
+    try {
+      // Check if user is admin
+      const user = await mongoStorage.getUserById(req.session.userId!);
+      if (!user || user.role !== 'admin') {
+        return res.status(403).json({
+          success: false,
+          error: 'Access denied. Admin privileges required.'
+        });
+      }
+
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const skip = (page - 1) * limit;
+
+      // Get contact submissions with pagination
+      const contacts = await Contact.find()
+        .sort({ createdAt: -1 }) // Most recent first
+        .skip(skip)
+        .limit(limit)
+        .lean();
+
+      const totalContacts = await Contact.countDocuments();
+      const totalPages = Math.ceil(totalContacts / limit);
+
+      res.json({
+        success: true,
+        data: {
+          contacts,
+          pagination: {
+            currentPage: page,
+            totalPages,
+            totalItems: totalContacts,
+            itemsPerPage: limit,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Error fetching contact submissions:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch contact submissions'
+      });
     }
   });
 

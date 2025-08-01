@@ -76,6 +76,10 @@ export async function dropAllCollections(): Promise<void> {
   console.log('⚠️  Dropping all MongoDB collections...');
   
   try {
+    if (!mongoose.connection.db) {
+      throw new Error('Database connection not established');
+    }
+    
     const collections = await mongoose.connection.db.listCollections().toArray();
     
     for (const collection of collections) {
@@ -196,10 +200,14 @@ export async function getDatabaseStats(): Promise<any> {
       events: await Event.countDocuments(),
       subscriptions: await Subscription.countDocuments(),
       notifications: await Notification.countDocuments(),
+      contacts: await Contact.countDocuments(),
       activeUsers: await User.countDocuments({ isActive: true }),
       activeProjects: await Project.countDocuments({ status: 'active', isDeleted: false }),
       featuredProjects: await Project.countDocuments({ featured: true, status: 'active' }),
-      upcomingEvents: await Event.countDocuments({ startDateTime: { $gt: new Date() } })
+      upcomingEvents: await Event.countDocuments({ startDateTime: { $gt: new Date() } }),
+      recentContacts: await Contact.countDocuments({ 
+        createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days
+      })
     };
     
     return stats;

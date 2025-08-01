@@ -109,15 +109,36 @@ export function ImageUpload({ onImagesUploaded, maxImages = 10, existingImages =
       }
 
       if (compressedImages.length > 0) {
-        const newImages = [...images, ...compressedImages];
-        setImages(newImages);
-        onImagesUploaded(newImages);
-        
-        const compressionRatio = totalOriginalSize / totalCompressedSize;
+        // Now upload the compressed images to the server
         toast({
-          title: "Images processed",
-          description: `${compressedImages.length} image(s) compressed from ${formatFileSize(totalOriginalSize)} to ${formatFileSize(totalCompressedSize)} (${compressionRatio.toFixed(1)}x smaller).`,
+          title: "Uploading images...",
+          description: `Uploading ${compressedImages.length} compressed image(s) to server.`,
         });
+
+        try {
+          const response = await uploadApi.uploadProcessedImages(compressedImages);
+          
+          if (response.success) {
+            const newImages = [...images, ...response.data.files];
+            setImages(newImages);
+            onImagesUploaded(newImages);
+            
+            const compressionRatio = totalOriginalSize / totalCompressedSize;
+            toast({
+              title: "Images uploaded successfully",
+              description: `${response.data.files.length} image(s) uploaded (compressed from ${formatFileSize(totalOriginalSize)} to ${formatFileSize(totalCompressedSize)}).`,
+            });
+          } else {
+            throw new Error(response.error || 'Upload failed');
+          }
+        } catch (uploadError) {
+          console.error('Server upload error:', uploadError);
+          toast({
+            title: "Upload failed",
+            description: "Images were processed but failed to upload to server. Please try again.",
+            variant: "destructive",
+          });
+        }
       }
     } catch (error) {
       console.error('Upload error:', error);
@@ -192,7 +213,7 @@ export function ImageUpload({ onImagesUploaded, maxImages = 10, existingImages =
               </button>
             </p>
             <p className="text-xs text-gray-500">
-              PNG, JPG, GIF up to 5MB each (max {maxImages} images)
+              PNG, JPG, GIF up to 20MB each, automatically compressed (max {maxImages} images)
             </p>
           </div>
         </div>

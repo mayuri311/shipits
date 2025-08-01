@@ -41,9 +41,31 @@ Set these environment variables in your deployment platform:
 Once configured, users will see:
 
 1. **Thread Summary Button**: On project detail pages with comments
-2. **Generate Summary**: Click to create AI-powered summaries
+2. **Generate Summary**: Click to create AI-powered summaries with full context
 3. **Smart Caching**: Summaries are cached and only regenerate when needed
 4. **Error Handling**: Graceful fallbacks if Azure OpenAI is unavailable
+
+## 🚀 Enhanced Context Features
+
+The AI summary now includes comprehensive context:
+
+### **Project Context**
+- Project title, description, and tags
+- Project status and owner information
+- Creation date and current state
+
+### **Comment Analysis**
+- **Hierarchy**: Parent-child comment relationships with proper threading
+- **Metadata**: Comment types (general, question, improvement, answer)
+- **Engagement**: Reaction counts and community participation
+- **Status Indicators**: Pinned comments, answered questions
+- **Chronological Flow**: Proper ordering with depth indicators
+
+### **Smart Processing**
+- **Threaded Conversations**: AI understands reply structures
+- **Question Tracking**: Identifies questions and their resolution status
+- **Community Engagement**: Notes participation patterns and popular discussions
+- **Technical Focus**: Emphasizes solutions, decisions, and actionable outcomes
 
 ## 🔧 Fixes Applied
 
@@ -54,7 +76,10 @@ Once configured, users will see:
 ✅ **Added environment variable templates**  
 ✅ **Improved initialization** to not crash app if Azure OpenAI is unavailable  
 ✅ **Enhanced logging** for debugging  
-✅ **Package cleanup** - Removed problematic `@azure/openai` dependency
+✅ **Package cleanup** - Removed problematic `@azure/openai` dependency  
+✅ **Full context integration** - Now includes complete project and comment context  
+✅ **Comment hierarchy processing** - Properly handles threaded conversations  
+✅ **Enhanced AI prompts** - Improved prompts for better understanding and summaries
 
 ## 🧪 Testing
 

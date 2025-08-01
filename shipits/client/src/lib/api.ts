@@ -228,6 +228,16 @@ export const uploadApi = {
     });
     return handleResponse(response);
   },
+
+  async uploadProcessedImages(processedImages: Array<{ filename: string; originalName: string; data: string; size: number; mimetype: string }>): Promise<ApiResponse<{ files: Array<{ filename: string; originalName: string; data: string; size: number; mimetype: string }> }>> {
+    const response = await fetch(`${API_BASE}/upload/processed-images`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ images: processedImages }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // Comments API
