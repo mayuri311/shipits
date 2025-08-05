@@ -11,6 +11,7 @@ import { AuthModal } from "@/components/AuthModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
+import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/components/YouTubeEmbed";
 
 const categories = ["All", "Technology", "Art", "Design", "Music", "Games", "Hardware"];
 const sortOptions = ["Featured", "Most Recent", "Most Viewed", "Trending"];
@@ -317,108 +318,68 @@ export default function Forum() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {projects.map((project) => (
-                <div key={project._id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 relative">
-                  {user?.role === 'admin' && (
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      className="absolute top-2 right-2 z-10 h-8 w-8 p-0"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDeleteProject(project);
-                      }}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  )}
-                  <Link href={`/forum/project/${project._id}`}>
-                    <div className="relative">
-                      <img
-                        src={getProjectImageUrl(project)}
-                        alt={project.title}
-                        className="w-full h-48 object-cover rounded-t-lg"
-                      />
-                      {project.featured && (
-                        <div className="absolute top-3 left-3">
-                          <span className="bg-maroon text-white px-2 py-1 rounded-full text-xs font-medium">
-                            Featured
-                          </span>
-                        </div>
-                      )}
-                      <div className="absolute top-3 right-3">
-                        <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                          project.status === 'active'
-                            ? 'bg-green-100 text-green-800'
-                            : 'bg-yellow-100 text-yellow-800'
-                        }`}>
-                          {project.status}
-                        </span>
+              {projects.map((project) => {
+                // Find the first video media, if any
+                const firstVideo = project.media?.find((media) => media.type === 'video');
+                return (
+                  <div key={project._id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 relative">
+                    {user?.role === 'admin' && (
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        className="absolute top-2 right-2 z-10 h-8 w-8 p-0"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          handleDeleteProject(project);
+                        }}
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    )}
+                    <Link href={`/forum/project/${project._id}`}>
+                      <div className="relative">
+                        {firstVideo ? (
+                          firstVideo.url && isValidYouTubeUrl(firstVideo.url) ? (
+                            <YouTubeEmbed
+                              videoId={extractYouTubeVideoId(firstVideo.url)!}
+                              title={firstVideo.caption || 'Project Video'}
+                              width={400}
+                              height={225}
+                              showTitle={false}
+                            />
+                          ) : (
+                            <video
+                              src={firstVideo.data || firstVideo.url}
+                              controls
+                              className="w-full h-48 object-cover rounded-lg"
+                              poster={(firstVideo.data || firstVideo.url) + '#t=0.1'}
+                            />
+                          )
+                        ) : (
+                          <img
+                            src={getProjectImageUrl(project)}
+                            alt={project.title}
+                            className="w-full h-48 object-cover rounded-t-lg"
+                          />
+                        )}
                       </div>
-                    </div>
-
-                    <div className="p-6">
-                      <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
-                        {project.title}
-                      </h3>
-
-                      <p className="text-gray-600 text-sm mb-4 line-clamp-3">
-                        {project.description}
-                      </p>
-
-                      <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
-                        <span>By {project.ownerId?.fullName || project.ownerId?.username}</span>
-                        <span>{formatDate(project.createdAt)}</span>
-                      </div>
-
-                      {project.tags && project.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1 mb-4">
-                          {project.tags.slice(0, 3).map((tag, index) => (
-                            <span key={index} className="bg-gray-100 text-gray-700 px-2 py-1 rounded-full text-xs">
-                              {tag}
-                            </span>
-                          ))}
-                          {project.tags.length > 3 && (
-                            <span className="text-gray-500 text-xs">
-                              +{project.tags.length - 3} more
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      <div className="flex items-center justify-between text-sm text-gray-500">
-                        <div className="flex items-center gap-4">
-                          <button
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleProjectLike(project._id);
-                            }}
-                            className={`flex items-center gap-1 transition-colors hover:text-red-500 text-gray-500 ${!isAuthenticated ? 'cursor-default' : 'cursor-pointer'}`}
-                            disabled={!isAuthenticated}
-                          >
-                            <Heart className="w-4 h-4" />
-                            {project.analytics?.totalLikes || 0}
-                          </button>
-                          <span className="flex items-center gap-1">
-                            <MessageSquare className="w-4 h-4" />
-                            {project.analytics?.totalComments || 0}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-4">
-                          <span className="flex items-center gap-1">
-                            👁️ {project.analytics?.views || 0}
-                          </span>
-                          <span className="flex items-center gap-1">
-                            📤 {project.analytics?.shares || 0}
-                          </span>
+                      <div className="p-6">
+                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+                          {project.title}
+                        </h3>
+                        <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+                          {project.description}
+                        </p>
+                        <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+                          <span>By {project.ownerId?.fullName || project.ownerId?.username}</span>
+                          <span>{formatDate(project.createdAt)}</span>
                         </div>
                       </div>
-                    </div>
-                  </Link>
-                </div>
-              ))}
+                    </Link>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

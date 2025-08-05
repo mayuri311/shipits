@@ -16,6 +16,7 @@ import { ThreadSummary } from "@/components/ThreadSummary";
 import { ShareButton } from "@/components/ShareButton";
 import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/components/YouTubeEmbed";
 import type { Project, Comment } from "@shared/schema";
+import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from "@/components/ui/carousel";
 
 export default function ProjectDetail() {
   const { id } = useParams();
@@ -521,15 +522,88 @@ export default function ProjectDetail() {
 
                 {/* Project Image/Video */}
                 <div className="relative mb-6">
-                  <img 
-                    src={getProjectImageUrl(project)}
-                    alt={project.title}
-                    className="w-full h-96 object-cover rounded-lg"
-                  />
-                  {project.media && project.media.some(m => m.type === 'video') && (
-                    <button className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-50 rounded-lg hover:bg-opacity-40 transition-opacity">
-                      <Play className="w-16 h-16 text-white" />
-                    </button>
+                  {project.media && project.media.length > 1 ? (
+                    // Sort media so videos come first
+                    (() => {
+                      const sortedMedia = [...project.media].sort((a, b) => {
+                        if (a.type === b.type) return 0;
+                        if (a.type === 'video') return -1;
+                        if (b.type === 'video') return 1;
+                        return 0;
+                      });
+                      return (
+                        <Carousel className="w-full">
+                          <CarouselContent>
+                            {sortedMedia.map((media, index) => (
+                              <CarouselItem key={index}>
+                                <div className="relative group">
+                                  {media.type === 'image' ? (
+                                    <img
+                                      src={media.data || media.url}
+                                      alt={media.caption || `Project media ${index + 1}`}
+                                      className="w-full h-96 object-cover rounded-lg"
+                                    />
+                                  ) : media.type === 'video' ? (
+                                    media.url && isValidYouTubeUrl(media.url) ? (
+                                      <YouTubeEmbed
+                                        videoId={extractYouTubeVideoId(media.url)!}
+                                        title={media.caption || 'Project Video'}
+                                        width={640}
+                                        height={360}
+                                        showTitle={false}
+                                      />
+                                    ) : (
+                                      <video
+                                        src={media.data || media.url}
+                                        controls
+                                        className="w-full h-96 object-cover rounded-lg"
+                                        poster={(media.data || media.url) + '#t=0.1'}
+                                      />
+                                    )
+                                  ) : null}
+                                </div>
+                              </CarouselItem>
+                            ))}
+                          </CarouselContent>
+                          <CarouselPrevious />
+                          <CarouselNext />
+                        </Carousel>
+                      );
+                    })()
+                  ) : (
+                    (() => {
+                      const firstVideo = project.media?.find((media) => media.type === 'video');
+                      if (firstVideo) {
+                        if (firstVideo.url && isValidYouTubeUrl(firstVideo.url)) {
+                          return (
+                            <YouTubeEmbed
+                              videoId={extractYouTubeVideoId(firstVideo.url)!}
+                              title={firstVideo.caption || 'Project Video'}
+                              width={640}
+                              height={360}
+                              showTitle={false}
+                            />
+                          );
+                        } else {
+                          return (
+                            <video
+                              src={firstVideo.data || firstVideo.url}
+                              controls
+                              className="w-full h-96 object-cover rounded-lg"
+                              poster={(firstVideo.data || firstVideo.url) + '#t=0.1'}
+                            />
+                          );
+                        }
+                      } else {
+                        return (
+                          <img 
+                            src={getProjectImageUrl(project)}
+                            alt={project.title}
+                            className="w-full h-96 object-cover rounded-lg"
+                          />
+                        );
+                      }
+                    })()
                   )}
                 </div>
 
