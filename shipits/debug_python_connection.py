@@ -49,29 +49,31 @@ def debug_dns_resolution():
     print("=====================================")
     
     try:
-        # Create client but don't connect yet
         client = MongoClient(MONGODB_URI, serverSelectionTimeoutMS=5000)
-        
-        # Get the actual hosts PyMongo will connect to
-        print("PyMongo parsed hosts:")
-        for seed in client.address:
-            print(f"   Seed: {seed}")
-        
-        # Try to connect and get server info
+
+        # Attempt to retrieve server info (triggers actual connection)
         print("\nConnecting...")
         info = client.server_info()
         print(f"✅ Connection successful!")
         print(f"   Server version: {info.get('version')}")
-        
-        # Get actual connection details
+
+        # Get primary info
         print("\nConnection details:")
         primary = client.primary
         if primary:
-            print(f"   Primary: {primary}")
-        
-        for server in client.topology_description.server_descriptions():
-            print(f"   Server: {server.address} - {server.server_type}")
-            
+            host, port = primary
+            print(f"   Primary: {host}:{port}")
+        else:
+            print("   No primary found (may be secondary or read-only)")
+
+        # Get all server descriptions
+        try:
+            servers = client.topology_description.server_descriptions()
+            for server in servers.values():
+                print(f"   Server: {server.address[0]}:{server.address[1]} - {server.server_type_name}")
+        except Exception as e:
+            print(f"   Could not get server descriptions: {e}")
+
     except Exception as e:
         print(f"❌ PyMongo analysis failed: {e}")
 
@@ -80,8 +82,6 @@ def test_with_verbose_logging():
     print("==================================")
     
     import logging
-    
-    # Enable MongoDB logging
     logging.basicConfig(level=logging.DEBUG)
     logger = logging.getLogger('pymongo')
     logger.setLevel(logging.DEBUG)
@@ -97,10 +97,9 @@ if __name__ == "__main__":
     print("🧪 Python MongoDB Connection Deep Debug")
     print("=======================================\n")
     
-    # Run all debug tests
     debug_dns_resolution()
     
-    # Note: Commenting out verbose test as it's very noisy
+    # Uncomment this if you want verbose pymongo debug logs
     # test_with_verbose_logging()
     
     print("\n💡 Key Findings:")
