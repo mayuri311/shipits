@@ -164,13 +164,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Session middleware
   app.use(session({
-    secret: process.env.SESSION_SECRET || 'your-secret-key',
+    secret: process.env.SESSION_SECRET || 'fallback-secret',
     resave: false,
     saveUninitialized: false,
     cookie: {
-      secure: process.env.NODE_ENV === 'production',
+      secure: false,           // MUST be false for HTTP
       httpOnly: true,
-      maxAge: 24 * 60 * 60 * 1000 // 24 hours
+      maxAge: 24 * 60 * 60 * 1000, // 24 hours
+      sameSite: 'lax',        // Important for cross-origin
+      domain: undefined       // Don't set domain for localhost/IP
     }
   }));
 
