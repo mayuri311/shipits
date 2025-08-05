@@ -447,7 +447,7 @@ export default function ProjectDetail() {
       />
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-2 sm:px-4 md:px-6 py-4 md:py-8">
           <div className="flex items-center justify-between">
             <Link href="/forum">
               <Button variant="ghost" size="sm">
@@ -486,23 +486,23 @@ export default function ProjectDetail() {
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-2 sm:px-4 md:px-6 py-8">
         <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
             {/* Main Content */}
             <div className="lg:col-span-2">
               {/* Project Header */}
-              <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-                <div className="flex items-start justify-between mb-4">
+              <div className="bg-white rounded-lg shadow-sm p-3 sm:p-4 md:p-6 mb-6">
+                <div className="flex flex-col sm:flex-row items-start justify-between mb-4 gap-2 sm:gap-0">
                   <div>
-                    <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
                       {project.title}
                     </h1>
-                    <p className="text-gray-600">
+                    <p className="text-xs sm:text-sm text-gray-600">
                       By {project.ownerId?.fullName || project.ownerId?.username}
                     </p>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-row flex-wrap items-center gap-2 mt-2 sm:mt-0">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
                       project.status === 'active' 
                         ? 'bg-green-100 text-green-800' 
@@ -541,22 +541,22 @@ export default function ProjectDetail() {
                                     <img
                                       src={media.data || media.url}
                                       alt={media.caption || `Project media ${index + 1}`}
-                                      className="w-full h-96 object-cover rounded-lg"
+                                      className="w-full h-48 sm:h-96 object-cover rounded-lg"
                                     />
                                   ) : media.type === 'video' ? (
                                     media.url && isValidYouTubeUrl(media.url) ? (
                                       <YouTubeEmbed
                                         videoId={extractYouTubeVideoId(media.url)!}
                                         title={media.caption || 'Project Video'}
-                                        width={640}
-                                        height={360}
+                                        width={320}
+                                        height={180}
                                         showTitle={false}
                                       />
                                     ) : (
                                       <video
                                         src={media.data || media.url}
                                         controls
-                                        className="w-full h-96 object-cover rounded-lg"
+                                        className="w-full h-48 sm:h-96 object-cover rounded-lg"
                                         poster={(media.data || media.url) + '#t=0.1'}
                                       />
                                     )
@@ -579,8 +579,8 @@ export default function ProjectDetail() {
                             <YouTubeEmbed
                               videoId={extractYouTubeVideoId(firstVideo.url)!}
                               title={firstVideo.caption || 'Project Video'}
-                              width={640}
-                              height={360}
+                              width={320}
+                              height={180}
                               showTitle={false}
                             />
                           );
@@ -589,7 +589,7 @@ export default function ProjectDetail() {
                             <video
                               src={firstVideo.data || firstVideo.url}
                               controls
-                              className="w-full h-96 object-cover rounded-lg"
+                              className="w-full h-48 sm:h-96 object-cover rounded-lg"
                               poster={(firstVideo.data || firstVideo.url) + '#t=0.1'}
                             />
                           );
@@ -599,7 +599,7 @@ export default function ProjectDetail() {
                           <img 
                             src={getProjectImageUrl(project)}
                             alt={project.title}
-                            className="w-full h-96 object-cover rounded-lg"
+                            className="w-full h-48 sm:h-96 object-cover rounded-lg"
                           />
                         );
                       }
@@ -608,7 +608,7 @@ export default function ProjectDetail() {
                 </div>
 
                 {/* Project Stats */}
-                <div className="flex items-center justify-between mb-6 p-4 bg-gray-50 rounded-lg">
+                <div className="flex flex-col sm:flex-row items-center justify-between mb-6 p-3 sm:p-4 md:p-6 bg-gray-50 rounded-lg gap-2 sm:gap-0">
                   <div className="flex items-center gap-6">
                     <button 
                       onClick={handleLike}

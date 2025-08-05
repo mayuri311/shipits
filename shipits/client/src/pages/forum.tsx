@@ -172,8 +172,8 @@ export default function Forum() {
         variant="destructive"
       />
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-sm border-b border-gray-200">
-        <div className="container mx-auto px-6 py-4">
-          <div className="flex justify-between items-center">
+        <div className="container mx-auto px-2 sm:px-4 md:px-6 py-2 md:py-4">
+          <div className="flex flex-col md:flex-row justify-between items-center gap-2 md:gap-8">
             <div className="flex items-center gap-8">
               <Link href="/" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
                 HOME
@@ -231,7 +231,7 @@ export default function Forum() {
       </nav>
 
       <div className="pt-24 pb-16">
-        <div className="container mx-auto px-6">
+        <div className="container mx-auto px-2 sm:px-4 md:px-6">
           <div className="text-center mb-12">
             <h1 className="text-4xl font-bold text-gray-900 mb-4">
               ShipIts Forum
@@ -242,8 +242,8 @@ export default function Forum() {
             </p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-6 mb-8">
-            <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="bg-white rounded-lg shadow-sm p-3 sm:p-4 md:p-6 mb-8">
+            <div className="flex flex-col md:flex-row gap-2 md:gap-4 items-center">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
                 <Input
@@ -255,7 +255,7 @@ export default function Forum() {
                 />
               </div>
 
-              <div className="flex gap-4">
+              <div className="flex flex-col sm:flex-row gap-2 md:gap-4 w-full md:w-auto">
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                   <SelectTrigger className="w-40">
                     <SelectValue />
@@ -317,12 +317,12 @@ export default function Forum() {
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
               {projects.map((project) => {
                 // Find the first video media, if any
                 const firstVideo = project.media?.find((media) => media.type === 'video');
                 return (
-                  <div key={project._id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 relative">
+                  <div key={project._id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 relative flex flex-col h-full">
                     {user?.role === 'admin' && (
                       <Button
                         variant="destructive"
@@ -338,7 +338,7 @@ export default function Forum() {
                       </Button>
                     )}
                     <Link href={`/forum/project/${project._id}`}>
-                      <div className="relative">
+                      <div className="relative w-full">
                         {firstVideo ? (
                           firstVideo.url && isValidYouTubeUrl(firstVideo.url) ? (
                             <YouTubeEmbed
@@ -352,7 +352,7 @@ export default function Forum() {
                             <video
                               src={firstVideo.data || firstVideo.url}
                               controls
-                              className="w-full h-48 object-cover rounded-lg"
+                              className="w-full h-40 sm:h-48 object-cover rounded-lg"
                               poster={(firstVideo.data || firstVideo.url) + '#t=0.1'}
                             />
                           )
@@ -360,18 +360,18 @@ export default function Forum() {
                           <img
                             src={getProjectImageUrl(project)}
                             alt={project.title}
-                            className="w-full h-48 object-cover rounded-t-lg"
+                            className="w-full h-40 sm:h-48 object-cover rounded-t-lg"
                           />
                         )}
                       </div>
                       <div className="p-6">
-                        <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
                           {project.title}
                         </h3>
-                        <p className="text-gray-600 text-sm mb-4 line-clamp-3">
+                        <p className="text-gray-600 text-xs sm:text-sm mb-4 line-clamp-3">
                           {project.description}
                         </p>
-                        <div className="flex items-center justify-between text-sm text-gray-500 mb-4">
+                        <div className="flex flex-col sm:flex-row items-center justify-between text-xs sm:text-sm text-gray-500 mb-4 gap-1 sm:gap-0">
                           <span>By {project.ownerId?.fullName || project.ownerId?.username}</span>
                           <span>{formatDate(project.createdAt)}</span>
                         </div>
