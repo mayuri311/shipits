@@ -404,6 +404,198 @@ export const usersApi = {
   },
 };
 
+// Admin API
+export const adminApi = {
+  async testAccess(): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/test`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getAnalytics(timeframe: string = '7d'): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/analytics?timeframe=${timeframe}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getUserAnalytics(timeframe: string = '7d'): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/analytics/users?timeframe=${timeframe}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getProjectAnalytics(timeframe: string = '7d'): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/analytics/projects?timeframe=${timeframe}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getEngagementAnalytics(timeframe: string = '7d'): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/analytics/engagement?timeframe=${timeframe}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async queryAI(query: string): Promise<ApiResponse<{ answer: string; context?: any }>> {
+    const response = await fetch(`${API_BASE}/admin/ai-query`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ query }),
+    });
+    return handleResponse(response);
+  },
+
+  async getAllUsers(params: {
+    page?: number;
+    limit?: number;
+    role?: string;
+    isActive?: boolean;
+    search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  } = {}): Promise<PaginatedResponse<User>> {
+    const searchParams = new URLSearchParams();
+    
+    if (params.page) searchParams.set('page', params.page.toString());
+    if (params.limit) searchParams.set('limit', params.limit.toString());
+    if (params.role) searchParams.set('role', params.role);
+    if (params.isActive !== undefined) searchParams.set('isActive', params.isActive.toString());
+    if (params.search) searchParams.set('search', params.search);
+    if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+
+    const response = await fetch(`${API_BASE}/admin/users?${searchParams}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async updateUserRole(userId: string, role: 'user' | 'moderator' | 'admin'): Promise<ApiResponse<{ user: User }>> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}/role`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ role }),
+    });
+    return handleResponse(response);
+  },
+
+  async toggleUserStatus(userId: string): Promise<ApiResponse<{ user: User }>> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}/toggle-status`, {
+      method: 'PUT',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async deleteUser(userId: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/admin/users/${userId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getAllProjects(params: {
+    page?: number;
+    limit?: number;
+    status?: string;
+    featured?: boolean;
+    search?: string;
+    sortBy?: string;
+    sortOrder?: 'asc' | 'desc';
+  } = {}): Promise<PaginatedResponse<Project>> {
+    const searchParams = new URLSearchParams();
+    
+    if (params.page) searchParams.set('page', params.page.toString());
+    if (params.limit) searchParams.set('limit', params.limit.toString());
+    if (params.status) searchParams.set('status', params.status);
+    if (params.featured !== undefined) searchParams.set('featured', params.featured.toString());
+    if (params.search) searchParams.set('search', params.search);
+    if (params.sortBy) searchParams.set('sortBy', params.sortBy);
+    if (params.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+
+    const response = await fetch(`${API_BASE}/admin/projects?${searchParams}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async toggleProjectFeatured(projectId: string): Promise<ApiResponse<{ project: Project }>> {
+    const response = await fetch(`${API_BASE}/admin/projects/${projectId}/toggle-featured`, {
+      method: 'PUT',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async updateProjectStatus(projectId: string, status: string): Promise<ApiResponse<{ project: Project }>> {
+    const response = await fetch(`${API_BASE}/admin/projects/${projectId}/status`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ status }),
+    });
+    return handleResponse(response);
+  },
+
+  async getSystemStats(): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/system/stats`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getRecentActivity(limit: number = 20): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/activity/recent?limit=${limit}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getModerationLogs(params: {
+    page?: number;
+    limit?: number;
+    action?: string;
+    targetType?: string;
+  } = {}): Promise<PaginatedResponse<any>> {
+    const searchParams = new URLSearchParams();
+    
+    if (params.page) searchParams.set('page', params.page.toString());
+    if (params.limit) searchParams.set('limit', params.limit.toString());
+    if (params.action) searchParams.set('action', params.action);
+    if (params.targetType) searchParams.set('targetType', params.targetType);
+
+    const response = await fetch(`${API_BASE}/admin/moderation/logs?${searchParams}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async exportData(type: 'users' | 'projects' | 'comments' | 'analytics'): Promise<Response> {
+    const response = await fetch(`${API_BASE}/admin/export/${type}`, {
+      credentials: 'include',
+    });
+    if (!response.ok) {
+      throw new Error(`Export failed: ${response.statusText}`);
+    }
+    return response;
+  },
+
+  async getDatabaseHealth(): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/system/health`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+};
+
 // Utility function to check API health
 export const healthCheck = async (): Promise<ApiResponse> => {
   const response = await fetch(`${API_BASE}/health`);

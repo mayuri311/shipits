@@ -9,6 +9,7 @@ import Forum from "@/pages/forum";
 import ProjectDetail from "@/pages/project-detail";
 import Profile from "@/pages/profile";
 import CreateProject from "@/pages/create-project";
+import AdminDashboard from "@/pages/admin-dashboard";
 import NotFound from "@/pages/not-found";
 
 function Router() {
@@ -20,6 +21,7 @@ function Router() {
       <Route path="/profile" component={Profile} />
       <Route path="/profile/:id" component={Profile} />
       <Route path="/create-project" component={CreateProject} />
+      <Route path="/admin" component={AdminDashboard} />
       <Route component={NotFound} />
     </Switch>
   );

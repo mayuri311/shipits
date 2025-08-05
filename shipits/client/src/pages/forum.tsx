@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link } from "wouter";
-import { Search, Filter, ChevronDown, Heart, MessageSquare, Share2, Bookmark, User, Plus, LogOut, Trash2 } from "lucide-react";
+import { Search, Filter, ChevronDown, Heart, MessageSquare, Share2, Bookmark, User, Plus, LogOut, Trash2, Crown } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -201,6 +201,14 @@ export default function Forum() {
                       Profile
                     </Button>
                   </Link>
+                  {user?.role === 'admin' && (
+                    <Link href="/admin">
+                      <Button variant="outline" size="sm" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
+                        <Crown className="w-4 h-4 mr-2" />
+                        Admin
+                      </Button>
+                    </Link>
+                  )}
                   <Button variant="outline" size="sm" onClick={logout}>
                     <LogOut className="w-4 h-4 mr-2" />
                     Logout

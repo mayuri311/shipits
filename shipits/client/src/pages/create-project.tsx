@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { ArrowLeft, Upload, Plus, X } from "lucide-react";
+import { ArrowLeft, Upload, Plus, X, Youtube, ExternalLink } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageUpload } from "@/components/ImageUpload";
+import { extractYouTubeVideoId, isValidYouTubeUrl, getYouTubeThumbnail } from "@/components/YouTubeEmbed";
 import { useAuth, useRequireAuth } from "@/contexts/AuthContext";
 import { projectsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -29,6 +30,7 @@ export default function CreateProject() {
     media: [],
   });
   const [newTag, setNewTag] = useState("");
+  const [youtubeUrl, setYoutubeUrl] = useState("");
 
   const handleImagesUploaded = (images: Array<{
     filename: string;
@@ -44,12 +46,83 @@ export default function CreateProject() {
       mimetype: image.mimetype,
       size: image.size,
       caption: image.originalName,
-      order: index
+      order: projectData.media.length + index
     }));
     
     setProjectData(prev => ({
       ...prev,
-      media: mediaItems
+      media: [...prev.media, ...mediaItems]
+    }));
+  };
+
+  const handleAddYouTubeVideo = () => {
+    if (!youtubeUrl.trim()) {
+      toast({
+        title: "Missing URL",
+        description: "Please enter a YouTube URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!isValidYouTubeUrl(youtubeUrl)) {
+      toast({
+        title: "Invalid YouTube URL",
+        description: "Please enter a valid YouTube URL (e.g., https://www.youtube.com/watch?v=VIDEO_ID).",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const videoId = extractYouTubeVideoId(youtubeUrl);
+    if (!videoId) {
+      toast({
+        title: "Invalid Video ID",
+        description: "Could not extract video ID from the YouTube URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    // Check if this video is already added
+    const existingVideo = projectData.media.find(
+      item => item.type === 'video' && item.url === youtubeUrl
+    );
+
+    if (existingVideo) {
+      toast({
+        title: "Video already added",
+        description: "This YouTube video is already in your project media.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const videoItem = {
+      type: 'video' as const,
+      url: youtubeUrl,
+      caption: `YouTube Video: ${videoId}`,
+      order: projectData.media.length,
+      filename: `youtube_${videoId}`,
+      mimetype: 'video/youtube'
+    };
+
+    setProjectData(prev => ({
+      ...prev,
+      media: [...prev.media, videoItem]
+    }));
+
+    setYoutubeUrl("");
+    toast({
+      title: "Video added",
+      description: "YouTube video has been added to your project.",
+    });
+  };
+
+  const removeMediaItem = (index: number) => {
+    setProjectData(prev => ({
+      ...prev,
+      media: prev.media.filter((_, i) => i !== index)
     }));
   };
 
@@ -296,15 +369,133 @@ export default function CreateProject() {
 
             {/* Media Upload */}
             <div className="bg-white rounded-lg shadow-sm p-6">
-              <h2 className="text-xl font-semibold text-gray-900 mb-6">Project Images</h2>
-              <p className="text-sm text-gray-600 mb-4">
-                Upload images to showcase your project. You can add up to 10 images.
-              </p>
+              <h2 className="text-xl font-semibold text-gray-900 mb-6">Project Media</h2>
               
-              <ImageUpload
-                onImagesUploaded={handleImagesUploaded}
-                maxImages={10}
-              />
+              {/* Images Section */}
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2">Images</h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Upload images to showcase your project. You can add up to 10 images.
+                  </p>
+                  
+                  <ImageUpload
+                    onImagesUploaded={handleImagesUploaded}
+                    maxImages={10}
+                  />
+                </div>
+
+                {/* YouTube Video Section */}
+                <div>
+                  <h3 className="text-lg font-medium text-gray-900 mb-2 flex items-center gap-2">
+                    <Youtube className="w-5 h-5 text-red-600" />
+                    YouTube Videos
+                  </h3>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Add YouTube videos to demonstrate your project in action.
+                  </p>
+                  
+                  <div className="flex gap-2">
+                    <Input
+                      placeholder="https://www.youtube.com/watch?v=..."
+                      value={youtubeUrl}
+                      onChange={(e) => setYoutubeUrl(e.target.value)}
+                      className="flex-1"
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          handleAddYouTubeVideo();
+                        }
+                      }}
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleAddYouTubeVideo}
+                      disabled={!youtubeUrl.trim()}
+                      className="flex items-center gap-2"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Video
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Media Preview */}
+                {projectData.media.length > 0 && (
+                  <div>
+                    <h3 className="text-lg font-medium text-gray-900 mb-4">Added Media</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {projectData.media.map((mediaItem, index) => (
+                        <div key={index} className="relative group border rounded-lg overflow-hidden">
+                          {mediaItem.type === 'image' && (
+                            <div className="aspect-video bg-gray-100">
+                              <img
+                                src={mediaItem.data}
+                                alt={mediaItem.caption || 'Project image'}
+                                className="w-full h-full object-cover"
+                              />
+                            </div>
+                          )}
+                          
+                          {mediaItem.type === 'video' && mediaItem.url && (
+                            <div className="aspect-video bg-gray-100 relative">
+                              {(() => {
+                                const videoId = extractYouTubeVideoId(mediaItem.url);
+                                return videoId ? (
+                                  <div className="relative w-full h-full">
+                                    <img
+                                      src={getYouTubeThumbnail(videoId, 'medium')}
+                                      alt="YouTube video thumbnail"
+                                      className="w-full h-full object-cover"
+                                    />
+                                    <div className="absolute inset-0 bg-black bg-opacity-30 flex items-center justify-center">
+                                      <div className="bg-red-600 rounded-full p-2">
+                                        <Youtube className="w-6 h-6 text-white" />
+                                      </div>
+                                    </div>
+                                    <div className="absolute bottom-2 right-2">
+                                      <a
+                                        href={mediaItem.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-white bg-black bg-opacity-50 rounded px-2 py-1 text-xs flex items-center gap-1 hover:bg-opacity-70"
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                        Watch
+                                      </a>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="w-full h-full flex items-center justify-center">
+                                    <span className="text-gray-500">Invalid video</span>
+                                  </div>
+                                );
+                              })()}
+                            </div>
+                          )}
+                          
+                          <div className="p-3">
+                            <p className="text-sm text-gray-600 truncate">
+                              {mediaItem.caption || mediaItem.filename}
+                            </p>
+                            <p className="text-xs text-gray-400 capitalize">
+                              {mediaItem.type}
+                            </p>
+                          </div>
+                          
+                          <button
+                            type="button"
+                            onClick={() => removeMediaItem(index)}
+                            className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600"
+                          >
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* Submit */}

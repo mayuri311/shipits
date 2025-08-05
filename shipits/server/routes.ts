@@ -3,16 +3,21 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { mongoStorage } from "./services/mongoStorage";
 import { upload, getFileUrl } from "./services/fileUpload";
+import { azureOpenAIService } from "./services/azureOpenAI";
 import { z } from "zod";
 import session from "express-session";
 import path from "path";
 import { fileURLToPath } from "url";
 import { Types } from "mongoose";
+import mongoose from "mongoose";
 import { 
   loginSchema, registerSchema, createProjectSchema, createCommentSchema, 
   createEventSchema, updateUserSchema, updateProjectSchema, contactSchema,
   type ApiResponse, type PaginatedResponse 
 } from "@shared/schema";
+import { 
+  User, Project, Comment, Event, UserActivity, Contact, getDatabaseStats
+} from "./models/index";
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
@@ -113,19 +118,27 @@ function formatCommentsForAI(commentHierarchy: any[]): any[] {
 
 // Middleware for admin authentication
 const requireAdmin = async (req: any, res: any, next: any) => {
+  console.log('🔐 Admin auth check - Session userId:', req.session.userId);
+  
   if (!req.session.userId) {
+    console.log('❌ No session userId found');
     return res.status(401).json({ success: false, error: 'Authentication required' });
   }
   
   try {
     const user = await mongoStorage.getUser(req.session.userId);
+    console.log('👤 Found user:', user ? { id: user._id, username: user.username, role: user.role } : 'null');
+    
     if (!user || user.role !== 'admin') {
+      console.log('❌ Admin access denied - User role:', user?.role);
       return res.status(403).json({ success: false, error: 'Admin access required' });
     }
+    
+    console.log('✅ Admin access granted for:', user.username);
     req.currentUser = user;
     next();
   } catch (error) {
-    console.error('Admin auth error:', error);
+    console.error('❌ Admin auth error:', error);
     res.status(500).json({ success: false, error: 'Authentication failed' });
   }
 };
@@ -1147,6 +1160,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Process pre-compressed images (already in Base64 format)
+  app.post('/api/upload/processed-images', requireAuth, (req, res) => {
+    try {
+      const { images } = req.body;
+      
+      if (!images || !Array.isArray(images) || images.length === 0) {
+        return res.status(400).json({ success: false, error: 'No images provided' });
+      }
+
+      // Validate that all images have required fields and are properly formatted
+      const validatedImages = images.map((image, index) => {
+        if (!image.data || !image.data.startsWith('data:image/')) {
+          throw new Error(`Invalid image data format at index ${index}`);
+        }
+        
+        if (!image.filename || !image.originalName || !image.mimetype) {
+          throw new Error(`Missing required fields at index ${index}`);
+        }
+
+        // Ensure we have a size, calculate if missing
+        let size = image.size;
+        if (!size) {
+          // Estimate size from base64 data
+          const base64Data = image.data.split(',')[1];
+          size = Math.round((base64Data.length * 3) / 4);
+        }
+
+        return {
+          filename: image.filename,
+          originalName: image.originalName,
+          data: image.data,
+          size: size,
+          mimetype: image.mimetype
+        };
+      });
+
+      res.json({ 
+        success: true, 
+        data: { files: validatedImages },
+        message: `${validatedImages.length} processed images ready` 
+      });
+    } catch (error) {
+      console.error('Processed images upload error:', error);
+      res.status(500).json({ success: false, error: error.message || 'Failed to process images' });
+    }
+  });
+
   // Contact Form Submission
   app.post('/api/contact', validateBody(contactSchema), async (req, res) => {
     try {
@@ -1227,6 +1287,564 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({
         success: false,
         error: 'Failed to fetch contact submissions'
+      });
+    }
+  });
+
+  // ================================
+  // ADMIN DASHBOARD ROUTES
+  // ================================
+
+  // Admin Analytics - Overview
+  app.get('/api/admin/analytics', requireAdmin, async (req, res) => {
+    try {
+      console.log('📊 Admin analytics request received');
+      const timeframe = req.query.timeframe as string || '7d';
+      console.log('📅 Timeframe:', timeframe);
+      
+      const now = new Date();
+      let startDate: Date;
+
+      switch (timeframe) {
+        case '24h':
+          startDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+          break;
+        case '7d':
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+          break;
+        case '30d':
+          startDate = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+          break;
+        case '90d':
+          startDate = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000);
+          break;
+        default:
+          startDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      }
+
+      console.log('📊 Fetching analytics data...');
+
+      // Get overview statistics
+      console.log('📊 Fetching overview statistics...');
+      const [totalUsers, totalProjects, totalComments, totalEvents, activeUsers] = await Promise.all([
+        User.countDocuments(),
+        Project.countDocuments({ $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }] }),
+        Comment.countDocuments(),
+        Event.countDocuments(),
+        User.countDocuments({ 
+          isActive: true,
+          lastLoginAt: { $gte: startDate }
+        })
+      ]);
+      
+      console.log('📊 Overview stats:', { totalUsers, totalProjects, totalComments, totalEvents, activeUsers });
+
+      const [newUsersToday, newProjectsToday] = await Promise.all([
+        User.countDocuments({
+          createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) }
+        }),
+        Project.countDocuments({
+          createdAt: { $gte: new Date(now.getFullYear(), now.getMonth(), now.getDate()) },
+          $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }]
+        })
+      ]);
+      
+      console.log('📊 Today stats:', { newUsersToday, newProjectsToday });
+
+      const engagementRate = totalUsers > 0 ? (activeUsers / totalUsers) * 100 : 0;
+
+      // User growth data
+      const userGrowthData = [];
+      for (let i = 6; i >= 0; i--) {
+        const date = new Date(now.getTime() - i * 24 * 60 * 60 * 1000);
+        const dayStart = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+        const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+        
+        const users = await User.countDocuments({
+          createdAt: { $lte: dayEnd }
+        });
+        const activeUsers = await User.countDocuments({
+          lastLoginAt: { $gte: dayStart, $lt: dayEnd }
+        });
+
+        userGrowthData.push({
+          date: date.toISOString().split('T')[0],
+          users,
+          activeUsers
+        });
+      }
+
+      // Project categories  
+      console.log('📊 Fetching project categories...');
+      const projectStats = await Project.aggregate([
+        { $match: { $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }] } },
+        { $unwind: '$tags' },
+        { $group: { _id: '$tags', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: 6 },
+        { $project: { category: '$_id', count: 1, _id: 0 } }
+      ]);
+      
+      console.log('📊 Project categories:', projectStats);
+
+      // Add colors to project stats
+      const colors = ['#6366f1', '#8b5cf6', '#06b6d4', '#10b981', '#f59e0b', '#ef4444'];
+      projectStats.forEach((stat, index) => {
+        stat.color = colors[index % colors.length];
+      });
+
+      // Engagement data
+      const engagementData = [];
+      for (let i = 5; i >= 0; i--) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        
+        const comments = await Comment.countDocuments({
+          createdAt: { $gte: monthStart, $lte: monthEnd }
+        });
+
+        const likes = await Project.aggregate([
+          { $match: { createdAt: { $gte: monthStart, $lte: monthEnd } } },
+          { $group: { _id: null, totalLikes: { $sum: '$analytics.totalLikes' } } }
+        ]);
+
+        const shares = await Project.aggregate([
+          { $match: { createdAt: { $gte: monthStart, $lte: monthEnd } } },
+          { $group: { _id: null, totalShares: { $sum: '$analytics.shares' } } }
+        ]);
+
+        engagementData.push({
+          month: monthStart.toLocaleString('default', { month: 'short' }),
+          comments,
+          likes: likes[0]?.totalLikes || 0,
+          shares: shares[0]?.totalShares || 0
+        });
+      }
+
+      // Top projects
+      console.log('📊 Fetching top projects...');
+      const topProjects = await Project.find({ 
+        $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }] 
+      })
+        .sort({ 'analytics.views': -1 })
+        .limit(5)
+        .populate('ownerId', 'username')
+        .select('title analytics.views analytics.totalLikes ownerId');
+        
+      console.log('📊 Top projects raw:', topProjects);
+
+      const formattedTopProjects = topProjects.map(project => ({
+        title: project.title,
+        views: project.analytics?.views || 0,
+        likes: project.analytics?.totalLikes || 0,
+        owner: (project.ownerId as any)?.username || 'Unknown'
+      }));
+      
+      console.log('📊 Formatted top projects:', formattedTopProjects);
+
+      // College distribution
+      const collegeDistribution = await User.aggregate([
+        { $match: { college: { $exists: true, $ne: null } } },
+        { $group: { _id: '$college', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $project: { college: '$_id', count: 1, _id: 0 } }
+      ]);
+
+      // Recent activity
+      console.log('📊 Fetching recent activity...');
+      const recentActivity = await UserActivity.find()
+        .sort({ timestamp: -1 })
+        .limit(10)
+        .populate('userId', 'username')
+        .select('action details timestamp userId');
+        
+      console.log('📊 Recent activity raw:', recentActivity);
+
+      const formattedActivity = recentActivity.map(activity => ({
+        id: activity._id.toString(),
+        type: activity.action?.includes('project') ? 'project' : 
+              activity.action?.includes('comment') ? 'comment' :
+              activity.action?.includes('event') ? 'event' : 'user',
+        description: `${activity.action || 'Unknown action'}: ${activity.details || 'No details'}`,
+        timestamp: activity.timestamp?.toLocaleString() || new Date().toLocaleString(),
+        user: (activity.userId as any)?.username || 'System'
+      }));
+
+      const analyticsData = {
+        overview: {
+          totalUsers: totalUsers || 0,
+          totalProjects: totalProjects || 0,
+          totalComments: totalComments || 0,
+          totalEvents: totalEvents || 0,
+          activeUsers: activeUsers || 0,
+          newUsersToday: newUsersToday || 0,
+          newProjectsToday: newProjectsToday || 0,
+          engagementRate: engagementRate || 0
+        },
+        userGrowth: userGrowthData || [],
+        projectStats: projectStats || [],
+        engagementData: engagementData || [],
+        topProjects: formattedTopProjects || [],
+        collegeDistribution: collegeDistribution || [],
+        recentActivity: formattedActivity || []
+      };
+
+      console.log('📊 Final analytics data:', JSON.stringify(analyticsData, null, 2));
+
+      res.json({
+        success: true,
+        data: analyticsData
+      });
+
+    } catch (error) {
+      console.error('❌ Admin analytics error:', error);
+      console.error(error.stack);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch analytics data',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      });
+    }
+  });
+
+  // Admin Test Endpoint
+  app.get('/api/admin/test', requireAdmin, async (req, res) => {
+    try {
+      console.log('🧪 Admin test endpoint accessed by:', req.currentUser?.username);
+      res.json({
+        success: true,
+        data: {
+          message: 'Admin access working correctly',
+          user: {
+            id: req.currentUser._id,
+            username: req.currentUser.username,
+            role: req.currentUser.role
+          },
+          timestamp: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error('Admin test error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Admin test failed'
+      });
+    }
+  });
+
+  // Admin AI Query Agent
+  app.post('/api/admin/ai-query', requireAdmin, async (req, res) => {
+    try {
+      const { query } = req.body;
+
+      if (!query || typeof query !== 'string') {
+        return res.status(400).json({
+          success: false,
+          error: 'Query is required and must be a string'
+        });
+      }
+
+      // Get relevant data context for the AI
+      const context = {
+        totalUsers: await User.countDocuments(),
+        totalProjects: await Project.countDocuments({ isDeleted: false }),
+        totalComments: await Comment.countDocuments(),
+        activeUsers: await User.countDocuments({ isActive: true }),
+        recentUsers: await User.countDocuments({
+          createdAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+        }),
+        featuredProjects: await Project.countDocuments({ featured: true, isDeleted: false }),
+        topCategories: await Project.aggregate([
+          { $match: { isDeleted: false } },
+          { $unwind: '$tags' },
+          { $group: { _id: '$tags', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: 5 }
+        ])
+      };
+
+      // Create AI prompt with context
+      const aiPrompt = `You are a ShipIts Forum Analytics AI Assistant. You have access to the following current platform data:
+
+PLATFORM STATISTICS:
+- Total Users: ${context.totalUsers}
+- Active Users: ${context.activeUsers}
+- Total Projects: ${context.totalProjects}
+- Featured Projects: ${context.featuredProjects}
+- Total Comments: ${context.totalComments}
+- New Users (Last 7 days): ${context.recentUsers}
+- Top Project Categories: ${context.topCategories.map(cat => `${cat._id} (${cat.count})`).join(', ')}
+
+USER QUERY: "${query}"
+
+Please provide a helpful, data-driven response based on the available statistics. If the query asks for specific data not provided above, explain what information would be needed and suggest how to gather it. Keep responses concise but informative.`;
+
+      const response = await azureOpenAIService.generateThreadSummary(
+        [{ 
+          content: aiPrompt,
+          authorName: 'Admin',
+          createdAt: new Date(),
+          type: 'comment'
+        }],
+        {
+          maxTokens: 500,
+          temperature: 0.3,
+          systemPrompt: `You are an AI assistant specialized in forum analytics and community management. Provide accurate, helpful insights based on the data provided. Be conversational but professional.`
+        }
+      );
+
+      res.json({
+        success: true,
+        data: {
+          answer: response,
+          context: {
+            queryTime: new Date().toISOString(),
+            dataSnapshot: context
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('AI query error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to process AI query. Please check Azure OpenAI configuration.'
+      });
+    }
+  });
+
+  // Admin User Management
+  app.get('/api/admin/users', requireAdmin, async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const skip = (page - 1) * limit;
+      const role = req.query.role as string;
+      const isActive = req.query.isActive === 'true' ? true : req.query.isActive === 'false' ? false : undefined;
+      const search = req.query.search as string;
+      const sortBy = req.query.sortBy as string || 'createdAt';
+      const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+
+      let filter: any = {};
+      if (role) filter.role = role;
+      if (isActive !== undefined) filter.isActive = isActive;
+      if (search) {
+        filter.$or = [
+          { username: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+          { fullName: { $regex: search, $options: 'i' } }
+        ];
+      }
+
+      const [users, total] = await Promise.all([
+        User.find(filter)
+          .sort({ [sortBy]: sortOrder })
+          .skip(skip)
+          .limit(limit)
+          .select('-password'),
+        User.countDocuments(filter)
+      ]);
+
+      res.json({
+        success: true,
+        data: {
+          items: users,
+          pagination: {
+            page,
+            limit,
+            total,
+            pages: Math.ceil(total / limit)
+          }
+        }
+      });
+
+    } catch (error) {
+      console.error('Admin users fetch error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch users'
+      });
+    }
+  });
+
+  // Admin Update User Role
+  app.put('/api/admin/users/:userId/role', requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+      const { role } = req.body;
+
+      if (!['user', 'moderator', 'admin'].includes(role)) {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid role'
+        });
+      }
+
+      const user = await User.findByIdAndUpdate(
+        userId,
+        { role },
+        { new: true }
+      ).select('-password');
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      // Log the action
+      await UserActivity.create({
+        userId: req.currentUser._id,
+        action: 'admin_role_update',
+        details: `Changed user ${user.username} role to ${role}`,
+        timestamp: new Date()
+      });
+
+      res.json({
+        success: true,
+        data: { user }
+      });
+
+    } catch (error) {
+      console.error('Admin role update error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to update user role'
+      });
+    }
+  });
+
+  // Admin Toggle User Status
+  app.put('/api/admin/users/:userId/toggle-status', requireAdmin, async (req, res) => {
+    try {
+      const { userId } = req.params;
+
+      const user = await User.findById(userId);
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      user.isActive = !user.isActive;
+      await user.save();
+
+      // Log the action
+      await UserActivity.create({
+        userId: req.currentUser._id,
+        action: 'admin_user_status_toggle',
+        details: `${user.isActive ? 'Activated' : 'Deactivated'} user ${user.username}`,
+        timestamp: new Date()
+      });
+
+      res.json({
+        success: true,
+        data: { user: { ...user.toObject(), password: undefined } }
+      });
+
+    } catch (error) {
+      console.error('Admin user status toggle error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to toggle user status'
+      });
+    }
+  });
+
+  // Admin System Statistics
+  app.get('/api/admin/system/stats', requireAdmin, async (req, res) => {
+    try {
+      const stats = await getDatabaseStats();
+      
+      // Add more detailed system stats
+      const systemStats = {
+        ...stats,
+        uptime: process.uptime(),
+        memory: process.memoryUsage(),
+        nodeVersion: process.version,
+        platform: process.platform
+      };
+
+      res.json({
+        success: true,
+        data: systemStats
+      });
+
+    } catch (error) {
+      console.error('System stats error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch system statistics'
+      });
+    }
+  });
+
+  // Admin Recent Activity
+  app.get('/api/admin/activity/recent', requireAdmin, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+
+      const activities = await UserActivity.find()
+        .sort({ timestamp: -1 })
+        .limit(limit)
+        .populate('userId', 'username')
+        .select('action details timestamp userId');
+
+      const formattedActivities = activities.map(activity => ({
+        id: activity._id.toString(),
+        action: activity.action,
+        details: activity.details,
+        timestamp: activity.timestamp.toISOString(),
+        user: (activity.userId as any)?.username || 'System'
+      }));
+
+      res.json({
+        success: true,
+        data: formattedActivities
+      });
+
+    } catch (error) {
+      console.error('Recent activity error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to fetch recent activity'
+      });
+    }
+  });
+
+  // Admin Health Check
+  app.get('/api/admin/system/health', requireAdmin, async (req, res) => {
+    try {
+      const health = {
+        status: 'healthy',
+        timestamp: new Date().toISOString(),
+        database: {
+          connected: mongoose.connection.readyState === 1,
+          status: mongoose.connection.readyState === 1 ? 'connected' : 'disconnected'
+        },
+        azureOpenAI: {
+          configured: azureOpenAIService.isConfigured(),
+          status: azureOpenAIService.isConfigured() ? 'ready' : 'not configured'
+        },
+        system: {
+          uptime: process.uptime(),
+          memory: process.memoryUsage(),
+          nodeVersion: process.version
+        }
+      };
+
+      res.json({
+        success: true,
+        data: health
+      });
+
+    } catch (error) {
+      console.error('Health check error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Health check failed'
       });
     }
   });

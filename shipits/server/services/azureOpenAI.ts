@@ -4,6 +4,10 @@
  */
 
 import OpenAI from 'openai';
+import { config } from 'dotenv';
+
+// Ensure environment variables are loaded
+config();
 
 export interface ThreadSummaryConfig {
   maxTokens?: number;
@@ -59,6 +63,13 @@ export class AzureOpenAIService {
       this.client = null;
       this.deploymentName = deployment;
     }
+  }
+
+  /**
+   * Check if the service is properly configured
+   */
+  isConfigured(): boolean {
+    return this.client !== null && !!this.deploymentName;
   }
 
   /**
@@ -144,7 +155,7 @@ FORMATTING:
 - Note conversation patterns (Q&A, debates, collaborations)
 `.trim();
 
-              const userPrompt = `${projectInfo}
+        const userPrompt = `${projectInfo}
 PROJECT ACTIVITY (${config.updateCount || 0} updates, ${config.commentCount || 0} comments):
 ${conversationText}
 
@@ -156,11 +167,11 @@ Please provide a comprehensive summary that captures the project context, key up
         hasApiKey: !!process.env.AZURE_OPENAI_API_KEY,
         apiKeyLength: process.env.AZURE_OPENAI_API_KEY?.length,
         messagesCount: 2,
-        maxTokens: config.maxTokens || 150
+        maxTokens: config.maxTokens || 200
       });
 
       const response = await this.client.chat.completions.create({
-        model: this.deploymentName, // This should match your deployment name exactly
+        model: this.deploymentName,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userPrompt }
@@ -169,40 +180,43 @@ Please provide a comprehensive summary that captures the project context, key up
         temperature: config.temperature || 0.3,
       });
 
-      console.log('Azure OpenAI Response:', {
-        id: response.id,
-        model: response.model,
-        hasChoices: response.choices?.length > 0,
-        finishReason: response.choices[0]?.finish_reason
-      });
-
       const summary = response.choices[0]?.message?.content?.trim();
       
       if (!summary) {
-        throw new Error('No summary generated');
+        throw new Error('No summary generated from Azure OpenAI');
       }
 
+      console.log('Azure OpenAI Response:', {
+        id: response.id,
+        model: response.model,
+        hasChoices: response.choices.length > 0,
+        finishReason: response.choices[0]?.finish_reason
+      });
+
       return summary;
+
     } catch (error: any) {
       console.error('Error generating thread summary:', {
         message: error.message,
-        status: error.status || error.code,
+        status: error.status,
         type: error.type,
-        details: error.error || error.response?.data || error.body,
+        details: error.error?.message,
         endpoint: process.env.AZURE_OPENAI_ENDPOINT,
         deployment: this.deploymentName,
         stack: error.stack
       });
-      
-      // Provide more specific error messages based on error type
-      if (error.status === 404 || error.code === 'DeploymentNotFound') {
-        throw new Error(`Azure OpenAI deployment '${this.deploymentName}' not found. Please check your deployment name.`);
-      } else if (error.status === 401 || error.status === 403 || error.code === 'Unauthorized') {
-        throw new Error('Azure OpenAI authentication failed. Please check your API key and endpoint.');
-      } else if (error.message?.includes('<!DOCTYPE') || error.message?.includes('HTML')) {
-        throw new Error('Azure OpenAI endpoint returned HTML instead of JSON. Please verify your endpoint URL format (should end with .openai.azure.com/).');
-      } else if (error.code === 'ENOTFOUND' || error.message?.includes('getaddrinfo')) {
+
+      // Provide more specific error messages based on the error type
+      if (error.code === 'ENOTFOUND' || error.code === 'ECONNREFUSED') {
         throw new Error('Cannot reach Azure OpenAI endpoint. Please check your endpoint URL and internet connection.');
+      } else if (error.status === 401) {
+        throw new Error('Azure OpenAI authentication failed. Please check your API key.');
+      } else if (error.status === 429) {
+        throw new Error('Azure OpenAI rate limit exceeded. Please try again later.');
+      } else if (error.status === 404) {
+        throw new Error('Azure OpenAI deployment not found. Please check your deployment name.');
+      } else if (error.message?.includes('timeout')) {
+        throw new Error('Azure OpenAI request timed out. Please try again.');
       } else if (error.type === 'invalid_request_error') {
         throw new Error(`Azure OpenAI request error: ${error.message}`);
       } else {
@@ -212,19 +226,7 @@ Please provide a comprehensive summary that captures the project context, key up
   }
 
   /**
-   * Check if the service is properly configured
-   */
-  isConfigured(): boolean {
-    return !!(
-      this.client &&
-      process.env.AZURE_OPENAI_ENDPOINT && 
-      process.env.AZURE_OPENAI_API_KEY &&
-      this.deploymentName
-    );
-  }
-
-  /**
-   * Get the required environment variables for setup
+   * Get the required environment variables for this service
    */
   static getRequiredEnvVars(): string[] {
     return [
@@ -235,5 +237,5 @@ Please provide a comprehensive summary that captures the project context, key up
   }
 }
 
-// Export a singleton instance
+// Create and export a singleton instance
 export const azureOpenAIService = new AzureOpenAIService();

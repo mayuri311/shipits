@@ -45,12 +45,16 @@ app.use((req, res, next) => {
 
 (async () => {
   // Initialize MongoDB connection
+  let dbConnected = false;
   try {
     await db.connect();
     await initializeModels();
+    dbConnected = true;
+    console.log('✅ Database fully initialized');
   } catch (error) {
-    console.error('Failed to initialize database:', error);
-    process.exit(1);
+    console.error('❌ Failed to initialize database:', error.message);
+    console.log('⚠️  Starting server in degraded mode without database...');
+    console.log('🔧 Frontend will still work, but API calls will fail');
   }
 
   const server = await registerRoutes(app);

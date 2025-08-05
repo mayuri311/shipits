@@ -14,6 +14,7 @@ import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CommentThread } from "@/components/CommentThread";
 import { ThreadSummary } from "@/components/ThreadSummary";
 import { ShareButton } from "@/components/ShareButton";
+import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/components/YouTubeEmbed";
 import type { Project, Comment } from "@shared/schema";
 
 export default function ProjectDetail() {
@@ -612,18 +613,41 @@ export default function ProjectDetail() {
                                     }}
                                   />
                                 ) : media.type === 'video' ? (
-                                  <video
-                                    src={media.data || media.url}
-                                    controls
-                                    className="w-full h-48 object-cover rounded-lg"
-                                    poster={(media.data || media.url) + '#t=0.1'}
-                                  />
+                                  // Check if it's a YouTube URL or regular video
+                                  media.url && isValidYouTubeUrl(media.url) ? (
+                                    <div className="w-full">
+                                      <YouTubeEmbed
+                                        videoId={extractYouTubeVideoId(media.url)!}
+                                        title={media.caption || 'Project Video'}
+                                        width={400}
+                                        height={225}
+                                        showTitle={false}
+                                      />
+                                      {media.caption && (
+                                        <p className="text-sm text-gray-600 mt-2 px-2">
+                                          {media.caption}
+                                        </p>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    // Regular video file
+                                    <video
+                                      src={media.data || media.url}
+                                      controls
+                                      className="w-full h-48 object-cover rounded-lg"
+                                      poster={(media.data || media.url) + '#t=0.1'}
+                                    />
+                                  )
                                 ) : null}
-                                {media.caption && (
-                                  <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                                    <p className="text-sm">{media.caption}</p>
-                                  </div>
-                                )}
+                                
+                                {/* Caption overlay for non-YouTube videos */}
+                                {media.type !== 'video' || !media.url || !isValidYouTubeUrl(media.url) ? (
+                                  media.caption && (
+                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                      <p className="text-sm">{media.caption}</p>
+                                    </div>
+                                  )
+                                ) : null}
                               </div>
                             ))}
                           </div>
