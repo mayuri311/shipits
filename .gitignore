@@ -112,3 +112,5 @@ shipits/uploads/
 # Cookie files
 cookies.txt
 shipits/cookies.txt
+
+*.pem
