@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authApi } from '@/lib/api';
+import { authApi, usersApi } from '@/lib/api';
 import type { User, LoginRequest, RegisterRequest } from '@shared/schema';
 
 interface AuthContextType {
@@ -82,9 +82,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const updateUser = (userData: Partial<User>) => {
+  const updateUser = async (userData: Partial<User>) => {
     if (user) {
-      setUser({ ...user, ...userData });
+      try {
+        // Update local state immediately for better UX
+        setUser({ ...user, ...userData });
+        
+        // Sync with server in background
+        const response = await usersApi.updateUser(user._id!.toString(), userData);
+        if (response.success && response.data) {
+          setUser(response.data.user);
+        }
+      } catch (error) {
+        console.error('Failed to update user:', error);
+        // Revert local state on error
+        setUser(user);
+      }
     }
   };
 

@@ -1,24 +1,29 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Link, useParams } from "wouter";
-import { User, MapPin, Calendar, Github, Linkedin, Twitter, Mail, Edit3, Save, X, Camera } from "lucide-react";
+import { User, MapPin, Calendar, Github, Linkedin, Twitter, Mail, Edit3, Save, X, Camera, Menu } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
-import { usersApi, uploadApi } from "@/lib/api";
+import { usersApi, uploadApi, projectsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery } from "@tanstack/react-query";
-import type { User as UserType } from "@shared/schema";
+import { useIsMobile } from "@/hooks/use-mobile";
+import type { User as UserType, Project } from "@shared/schema";
 import { compressProfileImage, formatFileSize } from "@/lib/imageCompression";
+import { ThemeSettings } from "@/components/ThemeSettings";
 
 export default function Profile() {
   const { user: currentUser, updateUser } = useAuth();
   const { id } = useParams();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   const [isEditing, setIsEditing] = useState(false);
   const [editedProfile, setEditedProfile] = useState<Partial<UserType>>({});
   const [uploadingProfilePic, setUploadingProfilePic] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine if we're viewing the current user's profile or someone else's
   const isOwnProfile = !id || (currentUser && id === currentUser._id?.toString());
@@ -32,6 +37,24 @@ export default function Profile() {
 
   // Use current user data if viewing own profile, otherwise use fetched data
   const user = isOwnProfile ? currentUser : otherUserData?.data?.user;
+
+  // Fetch user's projects
+  const { data: userProjectsData, isLoading: isLoadingProjects } = useQuery({
+    queryKey: ['userProjects', user?._id],
+    queryFn: () => user?._id ? projectsApi.getProjects({ ownerId: user._id.toString(), limit: 100 }) : null,
+    enabled: !!user?._id,
+  });
+
+  const userProjects = userProjectsData?.success ? userProjectsData.data.items : [];
+
+  // Fetch user's backed projects (subscriptions)
+  const { data: backedProjectsData, isLoading: isLoadingBackedProjects } = useQuery({
+    queryKey: ['userBackedProjects', user?._id],
+    queryFn: () => user?._id ? usersApi.getUserSubscriptions(user._id.toString()) : null,
+    enabled: !!user?._id,
+  });
+
+  const backedProjects = backedProjectsData?.success ? backedProjectsData.data.projects : [];
 
   useEffect(() => {
     setEditedProfile(user || {});
@@ -183,34 +206,73 @@ export default function Profile() {
   return (
     <div className="min-h-screen bg-gray-50">
       <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-sm border-b border-gray-200">
-        <div className="container mx-auto px-6 py-4">
+        <div className="container mx-auto px-4 py-2">
           <div className="flex justify-between items-center">
-            <Link href="/" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
+            <Link href="/" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide text-sm sm:text-base">
               HOME
             </Link>
-            <Link href="/forum" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
-              FORUM
-            </Link>
-            <Link href="/#contact" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
-              CONTACT
-            </Link>
-            <Link href="/#partners" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
-              PARTNERS
-            </Link>
+            
+            {/* Navigation Items */}
+            <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
+              <Link href="/forum">
+                <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-3">
+                  FORUM
+                </Button>
+              </Link>
+              
+              {/* Desktop: Show all navigation options */}
+              <div className="hidden md:flex items-center gap-2">
+                <Link href="/#contact" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
+                  CONTACT
+                </Link>
+                <Link href="/#partners" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
+                  PARTNERS
+                </Link>
+              </div>
+
+              {/* Mobile: More options button */}
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setIsMenuOpen(!isMenuOpen)}
+                className="px-2 text-xs relative md:hidden"
+              >
+                {isMenuOpen ? <X className="w-3 h-3" /> : <Menu className="w-3 h-3" />}
+                {!isMenuOpen && <span className="absolute -top-1 -right-1 w-2 h-2 bg-maroon rounded-full"></span>}
+              </Button>
+            </div>
           </div>
+          
+          {/* Mobile Extended Menu */}
+          {isMenuOpen && (
+            <div className="border-t border-gray-200 mt-2 pt-3 pb-2 md:hidden">
+              <div className="grid grid-cols-2 gap-2">
+                <Link href="/#contact" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+                    CONTACT
+                  </Button>
+                </Link>
+                <Link href="/#partners" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+                    PARTNERS
+                  </Button>
+                </Link>
+              </div>
+            </div>
+          )}
         </div>
       </nav>
 
       <div className="pt-20 pb-12">
-        <div className="container mx-auto px-6 max-w-6xl">
-          <div className="bg-white rounded-lg border border-gray-200 p-8 mb-8">
-            <div className="flex items-start justify-between mb-6">
-              <div className="flex items-center gap-6">
+        <div className="container mx-auto px-4 max-w-6xl">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 md:p-8 mb-8">
+            <div className="flex flex-col sm:flex-row items-start justify-between mb-6 gap-4 sm:gap-0">
+              <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-6 w-full sm:w-auto">
                 <div className="relative group">
                   {(isOwnProfile && isEditing ? editedProfile.profileImage : user.profileImage) ? (
                     <img
                       src={isOwnProfile && isEditing ? editedProfile.profileImage || user.profileImage : user.profileImage}
-                      alt={user.fullName || 'Profile'}
+                      alt={`${user.fullName || user.username || 'User'} profile picture`}
                       className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
                       onError={(e) => {
                         // Fallback to default avatar if image fails to load
@@ -233,23 +295,40 @@ export default function Profile() {
                   
                   {isOwnProfile && isEditing && (
                     <>
-                      <div className="absolute inset-0 bg-black bg-opacity-50 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                        <input
-                          type="file"
-                          accept="image/*"
-                          onChange={(e) => handleProfilePictureUpload(e.target.files)}
-                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                          disabled={uploadingProfilePic}
-                        />
+                      {/* Hidden file input */}
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={(e) => handleProfilePictureUpload(e.target.files)}
+                        className="hidden"
+                        disabled={uploadingProfilePic}
+                        aria-label="Upload profile picture"
+                      />
+                      
+                      {/* Visible, accessible change photo button */}
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={uploadingProfilePic}
+                        className="absolute -bottom-2 left-1/2 transform -translate-x-1/2 bg-white hover:bg-gray-50 text-gray-700 border-gray-300 shadow-sm"
+                        aria-label="Change profile picture"
+                        title="Change profile picture"
+                      >
                         {uploadingProfilePic ? (
-                          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-white"></div>
+                          <>
+                            <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-maroon mr-2"></div>
+                            Processing...
+                          </>
                         ) : (
-                          <Camera className="w-6 h-6 text-white" />
+                          <>
+                            <Camera className="w-4 h-4 mr-2" />
+                            Change Photo
+                          </>
                         )}
-                      </div>
-                      <div className="absolute -bottom-8 left-1/2 transform -translate-x-1/2 text-xs text-gray-500 bg-white px-2 py-1 rounded shadow-sm whitespace-nowrap">
-                        Hover to change photo
-                      </div>
+                      </Button>
                     </>
                   )}
                   
@@ -259,40 +338,56 @@ export default function Profile() {
                       size="sm"
                       onClick={handleRemoveProfilePicture}
                       className="absolute -bottom-2 -right-2 w-8 h-8 p-0 rounded-full bg-red-500 hover:bg-red-600 text-white border-red-500"
+                      aria-label="Remove profile picture"
+                      title="Remove profile picture"
                     >
-                      <X className="w-4 h-4" />
+                      <X className="w-4 h-4" aria-hidden="true" />
                     </Button>
                   )}
                 </div>
-                <div>
-                  <h1 className="text-3xl font-bold mb-2">{isOwnProfile && isEditing ? <Input value={editedProfile.fullName} onChange={(e) => setEditedProfile({...editedProfile, fullName: e.target.value})} /> : user.fullName}</h1>
-                  <p className="text-gray-600 mb-1">@{user.username} • {user.college}</p>
-                  <p className="text-gray-500 text-sm">Class of {user.graduationYear}</p>
+                <div className="text-center sm:text-left flex-1">
+                  <h1 className="text-2xl sm:text-3xl font-bold mb-2">
+                    {isOwnProfile && isEditing ? 
+                      <Input 
+                        value={editedProfile.fullName} 
+                        onChange={(e) => setEditedProfile({...editedProfile, fullName: e.target.value})} 
+                        className="text-center sm:text-left"
+                      /> : 
+                      user.fullName
+                    }
+                  </h1>
+                  <p className="text-gray-600 mb-1 text-sm sm:text-base">@{user.username} • {user.college}</p>
+                  {user.graduationYear && (
+                    <p className="text-gray-500 text-sm">Class of {user.graduationYear}</p>
+                  )}
                 </div>
               </div>
               
               {isOwnProfile && (
-                <Button 
-                  onClick={() => setIsEditing(!isEditing)}
-                  variant={isEditing ? "outline" : "default"}
-                  className={isEditing ? "" : "bg-maroon hover:bg-maroon/90"}
-                >
-                  {isEditing ? (
-                    <>
-                      <X size={16} className="mr-2" />
-                      Cancel
-                    </>
-                  ) : (
-                    <>
-                      <Edit3 size={16} className="mr-2" />
-                      Edit Profile
-                    </>
-                  )}
-                </Button>
+                <div className="w-full sm:w-auto flex justify-center">
+                  <Button 
+                    onClick={() => setIsEditing(!isEditing)}
+                    variant={isEditing ? "outline" : "default"}
+                    className={`${isEditing ? "" : "bg-maroon hover:bg-maroon/90"} w-full sm:w-auto`}
+                    size={isMobile ? "sm" : "default"}
+                  >
+                    {isEditing ? (
+                      <>
+                        <X size={16} className="mr-2" />
+                        Cancel
+                      </>
+                    ) : (
+                      <>
+                        <Edit3 size={16} className="mr-2" />
+                        Edit Profile
+                      </>
+                    )}
+                  </Button>
+                </div>
               )}
             </div>
 
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 lg:gap-8">
               <div>
                 <h3 className="font-semibold mb-4">About</h3>
                 {isOwnProfile && isEditing ? (
@@ -349,11 +444,11 @@ export default function Profile() {
             </div>
 
             {isOwnProfile && isEditing && (
-              <div className="flex justify-end gap-3 mt-6 pt-6 border-t border-gray-200">
-                <Button variant="outline" onClick={handleCancel}>
+              <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6 pt-6 border-t border-gray-200">
+                <Button variant="outline" onClick={handleCancel} className="w-full sm:w-auto">
                   Cancel
                 </Button>
-                <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700">
+                <Button onClick={handleSave} className="bg-green-600 hover:bg-green-700 w-full sm:w-auto">
                   <Save size={16} className="mr-2" />
                   Save Changes
                 </Button>
@@ -361,37 +456,157 @@ export default function Profile() {
             )}
           </div>
 
-          <div className="bg-white rounded-lg border border-gray-200 p-8">
+          <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 md:p-8">
             <Tabs defaultValue="my-projects" className="w-full">
-              <TabsList className="grid w-full grid-cols-2 bg-gray-100">
+              <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'} bg-gray-100 gap-1`}>
                 <TabsTrigger value="my-projects">My Projects</TabsTrigger>
                 <TabsTrigger value="backed-projects">Backed Projects</TabsTrigger>
+                {isOwnProfile && (
+                  <TabsTrigger value="theme-settings">Theme Settings</TabsTrigger>
+                )}
               </TabsList>
 
               <TabsContent value="my-projects" className="mt-6">
-                <div className="text-center py-12">
-                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No projects yet</h3>
-                  <p className="text-gray-500 mb-4">Create your first project and share it with the community!</p>
-                  <Link href="/create-project">
-                    <Button className="bg-green-600 hover:bg-green-700">
-                      Create New Project
-                    </Button>
-                  </Link>
-                </div>
+                {isLoadingProjects ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+                    <p className="text-gray-500">Loading projects...</p>
+                  </div>
+                ) : userProjects.length > 0 ? (
+                  <div className="space-y-4">
+                    {userProjects.map((project: Project) => (
+                      <div key={project._id?.toString()} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="text-lg font-semibold mb-2">
+                              <Link href={`/projects/${project._id}`} className="text-gray-900 hover:text-maroon">
+                                {project.title}
+                              </Link>
+                            </h3>
+                            <p className="text-gray-600 text-sm mb-2">{project.description}</p>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {project.tags?.map((tag) => (
+                                <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="text-right text-sm text-gray-500">
+                            <p>Status: <span className="capitalize font-medium">{project.status}</span></p>
+                            <p className="mt-1">Created: {new Date(project.createdAt).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center text-sm text-gray-500">
+                          <div className="flex gap-4">
+                            <span>👁️ {project.analytics?.views || 0} views</span>
+                            <span>❤️ {project.likes?.length || 0} likes</span>
+                            <span>💬 {project.analytics?.totalComments || 0} comments</span>
+                          </div>
+                          <Link href={`/projects/${project._id}`}>
+                            <Button variant="outline" size="sm">
+                              View Project
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <h3 className="text-lg font-semibold text-gray-600 mb-2">No projects yet</h3>
+                    <p className="text-gray-500 mb-4">
+                      {isOwnProfile 
+                        ? "Create your first project and share it with the community!"
+                        : "This user hasn't created any projects yet."
+                      }
+                    </p>
+                    {isOwnProfile && (
+                      <Link href="/create-project">
+                        <Button className="bg-green-600 hover:bg-green-700">
+                          Create New Project
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="backed-projects" className="mt-6">
-                <div className="text-center py-12">
-                  <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                  <h3 className="text-lg font-semibold text-gray-600 mb-2">No backed projects yet</h3>
-                  <p className="text-gray-500 mb-4">Explore the forum to find interesting projects to support!</p>
-                  <Link href="/forum">
-                    <Button variant="outline">
-                      Browse Projects
-                    </Button>
-                  </Link>
-                </div>
+                {isLoadingBackedProjects ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+                    <p className="text-gray-500">Loading backed projects...</p>
+                  </div>
+                ) : backedProjects.length > 0 ? (
+                  <div className="space-y-4">
+                    {backedProjects.map((project: Project) => (
+                      <div key={project._id?.toString()} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                        <div className="flex justify-between items-start mb-4">
+                          <div>
+                            <h3 className="text-lg font-semibold mb-2">
+                              <Link href={`/projects/${project._id}`} className="text-gray-900 hover:text-maroon">
+                                {project.title}
+                              </Link>
+                            </h3>
+                            <p className="text-gray-600 text-sm mb-2">{project.description}</p>
+                            <p className="text-gray-500 text-xs mb-2">
+                              by {project.ownerId?.fullName || project.ownerId?.username}
+                            </p>
+                            <div className="flex flex-wrap gap-2 mb-2">
+                              {project.tags?.map((tag) => (
+                                <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                                  {tag}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="text-right text-sm text-gray-500">
+                            <p>Status: <span className="capitalize font-medium">{project.status}</span></p>
+                            <p className="mt-1">Created: {new Date(project.createdAt).toLocaleDateString()}</p>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center text-sm text-gray-500">
+                          <div className="flex gap-4">
+                            <span>👁️ {project.analytics?.views || 0} views</span>
+                            <span>❤️ {project.likes?.length || 0} likes</span>
+                            <span>💬 {project.analytics?.totalComments || 0} comments</span>
+                          </div>
+                          <Link href={`/projects/${project._id}`}>
+                            <Button variant="outline" size="sm">
+                              View Project
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <User className="w-12 h-12 text-gray-400 mx-auto mb-4" />
+                    <h3 className="text-lg font-semibold text-gray-600 mb-2">No backed projects yet</h3>
+                    <p className="text-gray-500 mb-4">
+                      {isOwnProfile 
+                        ? "Explore the forum to find interesting projects to support!"
+                        : "This user hasn't backed any projects yet."
+                      }
+                    </p>
+                    {isOwnProfile && (
+                      <Link href="/forum">
+                        <Button variant="outline">
+                          Browse Projects
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                                )}
               </TabsContent>
+
+              {isOwnProfile && (
+                <TabsContent value="theme-settings" className="mt-6">
+                  <ThemeSettings />
+                </TabsContent>
+              )}
             </Tabs>
           </div>
         </div>

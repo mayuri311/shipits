@@ -48,6 +48,15 @@ export const userSchema = z.object({
     projectsRevived: z.number().default(0),
     helpfulAnswers: z.number().default(0)
   }).optional(),
+  themePreferences: z.object({
+    mode: z.enum(['light', 'dark', 'system']).default('system'),
+    accentColor: z.enum(['blue', 'purple', 'green', 'orange', 'red', 'pink']).default('blue'),
+    preset: z.string().default('default'),
+    customColors: z.record(z.string()).optional(),
+    fontSize: z.enum(['small', 'medium', 'large']).default('medium'),
+    reducedMotion: z.boolean().default(false),
+    highContrast: z.boolean().default(false)
+  }).optional(),
   subscriptions: z.array(z.instanceof(Types.ObjectId)).optional(),
   lastLoginAt: z.date().optional(),
   isActive: z.boolean().default(true),
@@ -66,15 +75,18 @@ export const projectSchema = z.object({
   description: z.string().min(1).max(2000),
   tags: z.array(z.string().max(50)),
   media: z.array(z.object({
-    type: z.enum(['image', 'video']),
+    type: z.enum(['image', 'video', 'document', 'archive', 'other']),
     url: z.string().optional(), // Allow both URLs and base64 data
-    data: z.string().optional(), // Base64 encoded image data
+    data: z.string().optional(), // Base64 encoded data for images, or file path for files
     caption: z.string().max(200).optional(),
+    description: z.string().max(500).optional(),
     uploadedAt: z.date().default(() => new Date()),
     order: z.number().default(0),
     filename: z.string().optional(),
+    originalName: z.string().optional(),
     mimetype: z.string().optional(),
-    size: z.number().optional()
+    size: z.number().optional(),
+    downloadCount: z.number().optional()
   })).optional(),
   updates: z.array(z.object({
     _id: z.instanceof(Types.ObjectId).optional(),
@@ -185,7 +197,7 @@ export const subscriptionSchema = z.object({
 export const notificationSchema = z.object({
   _id: z.instanceof(Types.ObjectId).optional(),
   recipientId: z.instanceof(Types.ObjectId),
-  type: z.enum(['project_update', 'comment_reply', 'mention', 'project_status_change', 'new_subscriber', 'event_registration', 'event_reminder']),
+  type: z.enum(['project_update', 'comment_reply', 'mention', 'project_status_change', 'new_subscriber', 'event_registration', 'event_reminder', 'project_like', 'comment_like', 'new_comment']),
   relatedProject: z.instanceof(Types.ObjectId).optional(),
   relatedComment: z.instanceof(Types.ObjectId).optional(),
   relatedUser: z.instanceof(Types.ObjectId).optional(),
@@ -198,6 +210,19 @@ export const notificationSchema = z.object({
   emailSentAt: z.date().optional(),
   expiresAt: z.date().optional(),
   createdAt: z.date().optional()
+});
+
+// MongoDB Category Schema Validation
+export const categorySchema = z.object({
+  _id: z.instanceof(Types.ObjectId).optional(),
+  name: z.string().min(1).max(50),
+  description: z.string().max(200).optional(),
+  color: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#3b82f6'),
+  tags: z.array(z.string().max(50)),
+  isActive: z.boolean().default(true),
+  createdBy: z.instanceof(Types.ObjectId),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
 });
 
 // Login and Registration Schemas
@@ -232,6 +257,7 @@ export const createUserSchema = userSchema.omit({
   updatedAt: true,
   statistics: true,
   streaks: true,
+  themePreferences: true,
   subscriptions: true,
   lastLoginAt: true
 });
@@ -242,14 +268,17 @@ export const createProjectSchema = z.object({
   tags: z.array(z.string().max(50)),
   status: z.enum(['active', 'inactive', 'archived', 'completed']).default('active'),
   media: z.array(z.object({
-    type: z.enum(['image', 'video']),
+    type: z.enum(['image', 'video', 'document', 'archive', 'other']),
     url: z.string().optional(), // Allow both URLs and base64 data
-    data: z.string().optional(), // Base64 encoded image data
+    data: z.string().optional(), // Base64 encoded data for images, or file path for files
     caption: z.string().max(200).optional(),
+    description: z.string().max(500).optional(),
     order: z.number().default(0),
     filename: z.string().optional(),
+    originalName: z.string().optional(),
     mimetype: z.string().optional(),
-    size: z.number().optional()
+    size: z.number().optional(),
+    downloadCount: z.number().optional()
   })).optional()
 });
 
@@ -266,6 +295,12 @@ export const createEventSchema = eventSchema.omit({
   attendees: true
 });
 
+export const createCategorySchema = categorySchema.omit({
+  _id: true,
+  createdAt: true,
+  updatedAt: true
+});
+
 // Update schemas for partial updates
 export const updateUserSchema = userSchema.partial().omit({
   _id: true,
@@ -280,11 +315,19 @@ export const updateProjectSchema = projectSchema.partial().omit({
   ownerId: true
 });
 
+export const updateCategorySchema = categorySchema.partial().omit({
+  _id: true,
+  createdAt: true,
+  updatedAt: true,
+  createdBy: true
+});
+
 // TypeScript types from Zod schemas
 export type User = z.infer<typeof userSchema>;
 export type Project = z.infer<typeof projectSchema>;
 export type Comment = z.infer<typeof commentSchema>;
 export type Event = z.infer<typeof eventSchema>;
+export type Category = z.infer<typeof categorySchema>;
 export type Subscription = z.infer<typeof subscriptionSchema>;
 export type Notification = z.infer<typeof notificationSchema>;
 
@@ -292,9 +335,11 @@ export type CreateUser = z.infer<typeof createUserSchema>;
 export type CreateProject = z.infer<typeof createProjectSchema>;
 export type CreateComment = z.infer<typeof createCommentSchema>;
 export type CreateEvent = z.infer<typeof createEventSchema>;
+export type CreateCategory = z.infer<typeof createCategorySchema>;
 
 export type UpdateUser = z.infer<typeof updateUserSchema>;
 export type UpdateProject = z.infer<typeof updateProjectSchema>;
+export type UpdateCategory = z.infer<typeof updateCategorySchema>;
 
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type RegisterRequest = z.infer<typeof registerSchema>;

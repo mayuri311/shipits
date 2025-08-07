@@ -5,6 +5,7 @@ export { User, type IUser } from './User';
 export { Project, type IProject } from './Project';
 export { Comment, type IComment } from './Comment';
 export { Event, type IEvent } from './Event';
+export { Category, type ICategory } from './Category';
 export { Subscription, type ISubscription } from './Subscription';
 export { Notification, type INotification } from './Notification';
 export { UserActivity, type IUserActivity } from './UserActivity';
@@ -19,6 +20,7 @@ import { User } from './User';
 import { Project } from './Project';
 import { Comment } from './Comment';
 import { Event } from './Event';
+import { Category } from './Category';
 import { Subscription } from './Subscription';
 import { Notification } from './Notification';
 import { UserActivity } from './UserActivity';
@@ -42,6 +44,7 @@ export async function initializeModels(): Promise<void> {
       'Project', 
       'Comment',
       'Event',
+      'Category',
       'Subscription',
       'Notification',
       'UserActivity',

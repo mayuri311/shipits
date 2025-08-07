@@ -204,6 +204,7 @@ CommentSchema.pre('save', function(next) {
 
 // Post-save middleware to update project analytics
 CommentSchema.post('save', async function() {
+  // Handle new comment creation
   if (this.isNew && !this.isDeleted) {
     try {
       // Update project comment count
@@ -222,6 +223,27 @@ CommentSchema.post('save', async function() {
       );
     } catch (error) {
       console.error('Error updating analytics after comment save:', error);
+    }
+  }
+  // Handle comment deletion (when isDeleted changes from false to true)
+  else if (!this.isNew && this.isDeleted && this.isModified('isDeleted')) {
+    try {
+      // Decrement project comment count
+      await mongoose.model('Project').findByIdAndUpdate(
+        this.projectId,
+        { 
+          $inc: { 'analytics.totalComments': -1 },
+          $set: { lastActivityAt: new Date() }
+        }
+      );
+      
+      // Decrement user statistics
+      await mongoose.model('User').findByIdAndUpdate(
+        this.authorId,
+        { $inc: { 'statistics.commentsPosted': -1 } }
+      );
+    } catch (error) {
+      console.error('Error updating analytics after comment deletion:', error);
     }
   }
 });

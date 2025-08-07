@@ -22,6 +22,16 @@ export interface IUserStatistics {
   helpfulAnswers: number;
 }
 
+export interface IThemePreferences {
+  mode: 'light' | 'dark' | 'system';
+  accentColor: 'blue' | 'purple' | 'green' | 'orange' | 'red' | 'pink';
+  preset: string;
+  customColors?: Record<string, string>;
+  fontSize: 'small' | 'medium' | 'large';
+  reducedMotion: boolean;
+  highContrast: boolean;
+}
+
 export interface IUser extends Document {
   _id: Types.ObjectId;
   cmuId?: string;
@@ -36,6 +46,7 @@ export interface IUser extends Document {
   contactInfo: IContactInfo;
   streaks: IStreaks;
   statistics: IUserStatistics;
+  themePreferences: IThemePreferences;
   subscriptions: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
@@ -68,6 +79,41 @@ const UserStatisticsSchema = new Schema<IUserStatistics>({
   commentsPosted: { type: Number, default: 0 },
   projectsRevived: { type: Number, default: 0 },
   helpfulAnswers: { type: Number, default: 0 }
+}, { _id: false });
+
+const ThemePreferencesSchema = new Schema<IThemePreferences>({
+  mode: {
+    type: String,
+    enum: ['light', 'dark', 'system'],
+    default: 'system'
+  },
+  accentColor: {
+    type: String,
+    enum: ['blue', 'purple', 'green', 'orange', 'red', 'pink'],
+    default: 'blue'
+  },
+  preset: {
+    type: String,
+    default: 'default'
+  },
+  customColors: {
+    type: Map,
+    of: String,
+    default: new Map()
+  },
+  fontSize: {
+    type: String,
+    enum: ['small', 'medium', 'large'],
+    default: 'medium'
+  },
+  reducedMotion: {
+    type: Boolean,
+    default: false
+  },
+  highContrast: {
+    type: Boolean,
+    default: false
+  }
 }, { _id: false });
 
 const UserSchema = new Schema<IUser>({
@@ -169,6 +215,10 @@ const UserSchema = new Schema<IUser>({
   },
   statistics: {
     type: UserStatisticsSchema,
+    default: {}
+  },
+  themePreferences: {
+    type: ThemePreferencesSchema,
     default: {}
   },
   subscriptions: [{

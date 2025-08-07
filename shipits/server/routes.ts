@@ -2,7 +2,7 @@ import type { Express } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { mongoStorage } from "./services/mongoStorage";
-import { upload, getFileUrl } from "./services/fileUpload";
+import { upload, getFileUrl, getFileCategory, saveFileToDisk, generateUniqueFilename, getFileIcon } from "./services/fileUpload";
 import { azureOpenAIService } from "./services/azureOpenAI";
 import { z } from "zod";
 import session from "express-session";
@@ -16,7 +16,7 @@ import {
   type ApiResponse, type PaginatedResponse 
 } from "@shared/schema";
 import { 
-  User, Project, Comment, Event, UserActivity, Contact, getDatabaseStats
+  User, Project, Comment, Event, UserActivity, Contact, Notification, getDatabaseStats
 } from "./models/index";
 
 // Get __dirname equivalent for ES modules
@@ -391,6 +391,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Update project (for project owners)
+  app.put('/api/projects/:id', requireAuth, async (req, res) => {
+    try {
+      const currentUser = await mongoStorage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const project = await mongoStorage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      // Check if user owns the project or is admin
+      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+
+      // Validate the updates using updateProjectSchema
+      const validatedUpdates = updateProjectSchema.parse(req.body);
+      
+      const updatedProject = await mongoStorage.updateProject(req.params.id, validatedUpdates);
+      if (!updatedProject) {
+        return res.status(404).json({ success: false, error: 'Project not found or update failed' });
+      }
+
+      res.json({ 
+        success: true,
+        data: { project: updatedProject },
+        message: 'Project updated successfully' 
+      });
+    } catch (error) {
+      console.error('Update project error:', error);
+      if (error.name === 'ZodError') {
+        return res.status(400).json({ success: false, error: 'Invalid project data', details: error.errors });
+      }
+      res.status(500).json({ success: false, error: 'Failed to update project' });
+    }
+  });
+
   app.delete('/api/projects/:id', requireAuth, async (req, res) => {
     try {
       const currentUser = await mongoStorage.getUser(req.session.userId);
@@ -473,6 +513,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         await project.addLike(userId);
         console.log('Project liked:', { projectId: req.params.id, totalLikes: project.analytics.totalLikes });
+        
+        // Create notification for project owner (if not self-like)
+        try {
+          await Notification.createProjectLikeNotification(
+            new Types.ObjectId(req.params.id),
+            userId,
+            project.ownerId._id
+          );
+        } catch (notificationError) {
+          console.error('Failed to create like notification:', notificationError);
+          // Don't fail the request if notification creation fails
+        }
         
         res.json({ 
           success: true, 
@@ -806,6 +858,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       await comment.addReaction(new Types.ObjectId(req.session.userId), type);
       
+      // Create notification for comment author if it's a like
+      if (type === 'like') {
+        try {
+          await Notification.createCommentLikeNotification(
+            new Types.ObjectId(req.params.id),
+            new Types.ObjectId(req.session.userId),
+            comment.authorId,
+            comment.projectId
+          );
+        } catch (notificationError) {
+          console.error('Failed to create comment like notification:', notificationError);
+          // Don't fail the request if notification creation fails
+        }
+      }
+      
       // Refresh the comment to get updated reactions
       const updatedComment = await mongoStorage.getComment(req.params.id);
       
@@ -891,6 +958,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const update = await mongoStorage.createProjectUpdate(updateData);
+      
+      // Create notifications for all project subscribers
+      try {
+        await Notification.createProjectUpdateNotification(
+          new Types.ObjectId(req.params.id),
+          update.title,
+          new Types.ObjectId(req.session.userId)
+        );
+      } catch (notificationError) {
+        console.error('Failed to create project update notification:', notificationError);
+        // Don't fail the request if notification creation fails
+      }
+      
       res.status(201).json({ 
         success: true, 
         data: { update },
@@ -907,6 +987,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const subscribed = await mongoStorage.subscribeToProject(req.session.userId, req.params.id);
       if (subscribed) {
+        // Create notification for project owner
+        try {
+          const project = await Project.findById(req.params.id).select('ownerId');
+          if (project) {
+            await Notification.createNewSubscriberNotification(
+              new Types.ObjectId(req.params.id),
+              new Types.ObjectId(req.session.userId),
+              project.ownerId
+            );
+          }
+        } catch (notificationError) {
+          console.error('Failed to create subscription notification:', notificationError);
+          // Don't fail the request if notification creation fails
+        }
+        
         res.json({ 
           success: true, 
           message: 'Successfully subscribed to project updates' 
@@ -950,6 +1045,93 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Category and Tag Routes
+  app.get('/api/categories', async (req, res) => {
+    try {
+      const includeInactive = req.query.includeInactive === 'true';
+      const categories = await mongoStorage.getCategories(includeInactive);
+      res.json({ success: true, data: { categories } });
+    } catch (error) {
+      console.error('Get categories error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get categories' });
+    }
+  });
+
+  app.get('/api/categories/:id', async (req, res) => {
+    try {
+      const category = await mongoStorage.getCategory(req.params.id);
+      if (!category) {
+        return res.status(404).json({ success: false, error: 'Category not found' });
+      }
+      res.json({ success: true, data: { category } });
+    } catch (error) {
+      console.error('Get category error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get category' });
+    }
+  });
+
+  app.post('/api/categories', requireAdmin, async (req, res) => {
+    try {
+      const categoryData = {
+        ...req.body,
+        createdBy: req.session.userId
+      };
+      const category = await mongoStorage.createCategory(categoryData);
+      res.status(201).json({ 
+        success: true, 
+        data: { category }, 
+        message: 'Category created successfully' 
+      });
+    } catch (error) {
+      console.error('Create category error:', error);
+      res.status(500).json({ success: false, error: 'Failed to create category' });
+    }
+  });
+
+  app.put('/api/categories/:id', requireAdmin, async (req, res) => {
+    try {
+      const category = await mongoStorage.updateCategory(req.params.id, req.body);
+      if (!category) {
+        return res.status(404).json({ success: false, error: 'Category not found' });
+      }
+      res.json({ 
+        success: true, 
+        data: { category }, 
+        message: 'Category updated successfully' 
+      });
+    } catch (error) {
+      console.error('Update category error:', error);
+      res.status(500).json({ success: false, error: 'Failed to update category' });
+    }
+  });
+
+  app.delete('/api/categories/:id', requireAdmin, async (req, res) => {
+    try {
+      const success = await mongoStorage.deleteCategory(req.params.id);
+      if (!success) {
+        return res.status(404).json({ success: false, error: 'Category not found' });
+      }
+      res.json({ 
+        success: true, 
+        message: 'Category deactivated successfully' 
+      });
+    } catch (error) {
+      console.error('Delete category error:', error);
+      res.status(500).json({ success: false, error: 'Failed to delete category' });
+    }
+  });
+
+  app.get('/api/tags/popular', async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 20;
+      const tags = await mongoStorage.getPopularTags(limit);
+      res.json({ success: true, data: { tags } });
+    } catch (error) {
+      console.error('Get popular tags error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get popular tags' });
+    }
+  });
+
   // Comment Routes
   app.get('/api/projects/:projectId/comments', async (req, res) => {
     try {
@@ -975,6 +1157,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const comment = await mongoStorage.createComment(commentData);
+      
+      // Create notifications
+      try {
+        // If it's a reply to another comment, notify the parent comment author
+        if (req.body.parentCommentId) {
+          await Notification.createCommentReplyNotification(
+            comment._id,
+            new Types.ObjectId(req.body.parentCommentId),
+            new Types.ObjectId(req.session.userId),
+            new Types.ObjectId(req.params.projectId)
+          );
+        } else {
+          // If it's a new top-level comment, notify the project owner
+          const project = await Project.findById(req.params.projectId).select('ownerId');
+          if (project) {
+            await Notification.createNewCommentNotification(
+              comment._id,
+              new Types.ObjectId(req.session.userId),
+              new Types.ObjectId(req.params.projectId),
+              project.ownerId
+            );
+          }
+        }
+      } catch (notificationError) {
+        console.error('Failed to create comment notification:', notificationError);
+        // Don't fail the request if notification creation fails
+      }
+      
       res.status(201).json({ 
         success: true, 
         data: { comment },
@@ -983,6 +1193,39 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Create comment error:', error);
       res.status(500).json({ success: false, error: 'Failed to create comment' });
+    }
+  });
+
+  // Update comment (for comment authors)
+  app.put('/api/comments/:id', requireAuth, async (req, res) => {
+    try {
+      const currentUser = await mongoStorage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const { content } = req.body;
+      if (!content || typeof content !== 'string' || content.trim().length === 0) {
+        return res.status(400).json({ success: false, error: 'Comment content is required' });
+      }
+
+      if (content.length > 2000) {
+        return res.status(400).json({ success: false, error: 'Comment content too long (max 2000 characters)' });
+      }
+
+      const updatedComment = await mongoStorage.updateComment(req.params.id, content.trim(), req.session.userId);
+      if (!updatedComment) {
+        return res.status(404).json({ success: false, error: 'Comment not found or permission denied' });
+      }
+
+      res.json({ 
+        success: true,
+        data: { comment: updatedComment },
+        message: 'Comment updated successfully' 
+      });
+    } catch (error) {
+      console.error('Update comment error:', error);
+      res.status(500).json({ success: false, error: 'Failed to update comment' });
     }
   });
 
@@ -1125,12 +1368,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.get('/api/users/:id/subscriptions', requireAuth, async (req, res) => {
+    try {
+      // Users can only view their own subscriptions, unless they're admin
+      const currentUser = await mongoStorage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+      
+      if (req.params.id !== req.session.userId && currentUser.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+
+      const projects = await mongoStorage.getUserSubscriptions(req.params.id);
+      res.json({ 
+        success: true, 
+        data: { projects },
+        message: 'User subscriptions retrieved successfully' 
+      });
+    } catch (error) {
+      console.error('Get user subscriptions error:', error);
+      res.status(500).json({ 
+        success: false, 
+        error: 'Failed to get user subscriptions' 
+      });
+    }
+  });
+
   // Health check
   app.get('/api/health', (req, res) => {
     res.json({ success: true, message: 'API is healthy', timestamp: new Date().toISOString() });
   });
 
-  // File Upload Routes
+  // File Upload Routes - Enhanced to handle all file types
+  app.post('/api/upload/files', requireAuth, upload.array('files', 15), async (req, res) => {
+    try {
+      if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
+        return res.status(400).json({ success: false, error: 'No files uploaded' });
+      }
+
+      const uploadedFiles = [];
+
+      for (const file of req.files) {
+        const fileCategory = getFileCategory(file.mimetype);
+        const uniqueFilename = generateUniqueFilename(file.originalname);
+        
+        let fileData;
+        let filePath;
+        
+        if (fileCategory === 'image') {
+          // For images, continue using Base64 encoding
+          const base64Data = file.buffer ? file.buffer.toString('base64') : '';
+          fileData = `data:${file.mimetype};base64,${base64Data}`;
+        } else {
+          // For documents and other files, save to disk
+          filePath = await saveFileToDisk(file.buffer, uniqueFilename);
+          fileData = getFileUrl(uniqueFilename);
+        }
+        
+        uploadedFiles.push({
+          type: fileCategory === 'image' ? 'image' : fileCategory,
+          filename: uniqueFilename,
+          originalName: file.originalname,
+          data: fileData,
+          url: fileCategory === 'image' ? undefined : fileData,
+          size: file.size,
+          mimetype: file.mimetype,
+          category: fileCategory,
+          icon: getFileIcon(file.mimetype)
+        });
+      }
+
+      res.json({ 
+        success: true, 
+        data: { files: uploadedFiles },
+        message: `${uploadedFiles.length} file(s) processed successfully` 
+      });
+    } catch (error) {
+      console.error('File upload error:', error);
+      res.status(500).json({ success: false, error: 'Failed to process files' });
+    }
+  });
+
+  // Legacy route for backward compatibility
   app.post('/api/upload/images', requireAuth, upload.array('images', 10), (req, res) => {
     try {
       if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
@@ -1208,6 +1528,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ success: false, error: error.message || 'Failed to process images' });
     }
   });
+
+  // File download route
+  app.get('/api/download/:filename', async (req, res) => {
+    try {
+      const { filename } = req.params;
+      const uploadsDir = path.join(__dirname, '../../uploads');
+      const filePath = path.join(uploadsDir, filename);
+      
+      // Check if file exists
+      if (!require('fs').existsSync(filePath)) {
+        return res.status(404).json({ success: false, error: 'File not found' });
+      }
+      
+      // Update download count in database (optional)
+      // This would require finding the project with this file and incrementing the count
+      
+      // Send the file
+      res.download(filePath, (err) => {
+        if (err) {
+          console.error('File download error:', err);
+          res.status(500).json({ success: false, error: 'Failed to download file' });
+        }
+      });
+    } catch (error) {
+      console.error('Download error:', error);
+      res.status(500).json({ success: false, error: 'Failed to download file' });
+    }
+  });
+
+  // Serve uploaded files statically
+  app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
 
   // Contact Form Submission
   app.post('/api/contact', validateBody(contactSchema), async (req, res) => {
@@ -1454,15 +1805,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Recent activity
       console.log('📊 Fetching recent activity...');
-      const recentActivity = await UserActivity.find()
-        .sort({ timestamp: -1 })
+      const userActivitiesData = await UserActivity.find()
+        .sort({ date: -1 })
         .limit(10)
         .populate('userId', 'username')
-        .select('action details timestamp userId');
+        .select('activities date userId');
         
-      console.log('📊 Recent activity raw:', recentActivity);
+      console.log('📊 Recent activity raw:', userActivitiesData);
 
-      const formattedActivity = recentActivity.map(activity => ({
+      // Flatten activities and format them
+      const recentActivity = [];
+      for (const userActivity of userActivitiesData) {
+        for (const activity of userActivity.activities) {
+          recentActivity.push({
+            _id: activity.relatedId,
+            action: activity.type.replace(/_/g, ' '),
+            details: `${activity.type.replace(/_/g, ' ')} activity`,
+            timestamp: activity.timestamp || userActivity.date,
+            userId: userActivity.userId
+          });
+        }
+      }
+      
+      // Sort by timestamp and limit to 10 most recent
+      recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const limitedActivity = recentActivity.slice(0, 10);
+
+      const formattedActivity = limitedActivity.map(activity => ({
         id: activity._id.toString(),
         type: activity.action?.includes('project') ? 'project' : 
               activity.action?.includes('comment') ? 'comment' :
@@ -1788,17 +2157,35 @@ Please provide a helpful, data-driven response based on the available statistics
     try {
       const limit = parseInt(req.query.limit as string) || 20;
 
-      const activities = await UserActivity.find()
-        .sort({ timestamp: -1 })
+      const userActivitiesData = await UserActivity.find()
+        .sort({ date: -1 })
         .limit(limit)
         .populate('userId', 'username')
-        .select('action details timestamp userId');
+        .select('activities date userId');
 
-      const formattedActivities = activities.map(activity => ({
+      // Flatten activities and format them
+      const activities = [];
+      for (const userActivity of userActivitiesData) {
+        for (const activity of userActivity.activities) {
+          activities.push({
+            _id: activity.relatedId,
+            action: activity.type.replace(/_/g, ' '),
+            details: `${activity.type.replace(/_/g, ' ')} activity`,
+            timestamp: activity.timestamp || userActivity.date,
+            userId: userActivity.userId
+          });
+        }
+      }
+      
+      // Sort by timestamp and limit
+      activities.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const limitedActivities = activities.slice(0, limit);
+
+      const formattedActivities = limitedActivities.map(activity => ({
         id: activity._id.toString(),
         action: activity.action,
         details: activity.details,
-        timestamp: activity.timestamp.toISOString(),
+        timestamp: activity.timestamp instanceof Date ? activity.timestamp.toISOString() : new Date(activity.timestamp).toISOString(),
         user: (activity.userId as any)?.username || 'System'
       }));
 
@@ -1812,6 +2199,305 @@ Please provide a helpful, data-driven response based on the available statistics
       res.status(500).json({
         success: false,
         error: 'Failed to fetch recent activity'
+      });
+    }
+  });
+
+  // ================================
+  // NOTIFICATION ROUTES
+  // ================================
+
+  // Get user's notifications
+  app.get('/api/notifications', requireAuth, async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const includeRead = req.query.includeRead === 'true';
+
+      const filter: any = { recipientId: req.session.userId };
+      if (!includeRead) {
+        filter.read = false;
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [notifications, total] = await Promise.all([
+        Notification.find(filter)
+          .populate('relatedUser', 'username fullName profileImage')
+          .populate('relatedProject', 'title')
+          .populate('relatedEvent', 'title startDateTime')
+          .populate('relatedComment', 'content')
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit),
+        Notification.countDocuments(filter)
+      ]);
+
+      const totalPages = Math.ceil(total / limit);
+
+      res.json({
+        success: true,
+        data: {
+          notifications,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages,
+            hasNextPage: page < totalPages,
+            hasPrevPage: page > 1
+          }
+        }
+      });
+    } catch (error) {
+      console.error('Get notifications error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get notifications'
+      });
+    }
+  });
+
+  // Get unread notification count
+  app.get('/api/notifications/unread/count', requireAuth, async (req, res) => {
+    try {
+      const count = await Notification.countDocuments({
+        recipientId: req.session.userId,
+        read: false
+      });
+
+      res.json({
+        success: true,
+        data: { count }
+      });
+    } catch (error) {
+      console.error('Get unread count error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get unread count'
+      });
+    }
+  });
+
+  // Mark single notification as read
+  app.put('/api/notifications/:id/read', requireAuth, async (req, res) => {
+    try {
+      const notification = await Notification.findOne({
+        _id: req.params.id,
+        recipientId: req.session.userId
+      });
+
+      if (!notification) {
+        return res.status(404).json({
+          success: false,
+          error: 'Notification not found'
+        });
+      }
+
+      await notification.markAsRead();
+
+      res.json({
+        success: true,
+        data: { notification },
+        message: 'Notification marked as read'
+      });
+    } catch (error) {
+      console.error('Mark notification read error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to mark notification as read'
+      });
+    }
+  });
+
+  // Mark all notifications as read for user
+  app.put('/api/notifications/mark-all-read', requireAuth, async (req, res) => {
+    try {
+      const result = await Notification.markAllAsRead(new Types.ObjectId(req.session.userId));
+
+      res.json({
+        success: true,
+        data: { modifiedCount: result.modifiedCount },
+        message: 'All notifications marked as read'
+      });
+    } catch (error) {
+      console.error('Mark all notifications read error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to mark all notifications as read'
+      });
+    }
+  });
+
+  // Delete single notification
+  app.delete('/api/notifications/:id', requireAuth, async (req, res) => {
+    try {
+      const result = await Notification.deleteOne({
+        _id: req.params.id,
+        recipientId: req.session.userId
+      });
+
+      if (result.deletedCount === 0) {
+        return res.status(404).json({
+          success: false,
+          error: 'Notification not found'
+        });
+      }
+
+      res.json({
+        success: true,
+        message: 'Notification deleted'
+      });
+    } catch (error) {
+      console.error('Delete notification error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to delete notification'
+      });
+    }
+  });
+
+  // ================================
+  // USER DASHBOARD ROUTES
+  // ================================
+
+  // Get user dashboard data
+  app.get('/api/dashboard', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId);
+      const user = await User.findById(userId);
+
+      if (!user) {
+        return res.status(404).json({
+          success: false,
+          error: 'User not found'
+        });
+      }
+
+      // Get user's projects with analytics
+      const userProjects = await Project.find({ 
+        ownerId: userId,
+        $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }]
+      })
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select('title description status analytics likes createdAt updatedAt');
+
+      // Get projects user has liked
+      const likedProjects = await Project.find({ 
+        likes: userId,
+        $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }]
+      })
+        .populate('ownerId', 'username fullName')
+        .sort({ createdAt: -1 })
+        .limit(5)
+        .select('title ownerId analytics.totalLikes createdAt');
+
+      // Get projects user is subscribed to
+      const subscriptions = await mongoStorage.getUserSubscriptions(req.session.userId);
+
+      // Get user's recent comments
+      const recentComments = await Comment.find({ authorId: userId })
+        .populate('projectId', 'title')
+        .sort({ createdAt: -1 })
+        .limit(10)
+        .select('content projectId createdAt reactions');
+
+      // Get user's unread notifications count
+      const unreadNotificationsCount = await Notification.countDocuments({
+        recipientId: userId,
+        read: false
+      });
+
+      // Calculate user statistics
+      const totalProjectsCreated = await Project.countDocuments({ 
+        ownerId: userId,
+        $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }]
+      });
+      
+      const totalCommentsPosted = await Comment.countDocuments({ authorId: userId });
+      
+      const totalLikesReceived = await Project.aggregate([
+        { $match: { ownerId: userId, $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }] } },
+        { $group: { _id: null, totalLikes: { $sum: '$analytics.totalLikes' } } }
+      ]);
+
+      const totalProjectViews = await Project.aggregate([
+        { $match: { ownerId: userId, $or: [{ isDeleted: false }, { isDeleted: { $exists: false } }] } },
+        { $group: { _id: null, totalViews: { $sum: '$analytics.views' } } }
+      ]);
+
+      // Get user's activity timeline
+      const userActivities = await UserActivity.find({ userId })
+        .sort({ date: -1 })
+        .limit(10)
+        .select('activities date');
+      
+      // Flatten activities and format them
+      const recentActivity = [];
+      for (const userActivity of userActivities) {
+        for (const activity of userActivity.activities) {
+          recentActivity.push({
+            _id: activity.relatedId,
+            action: activity.type.replace(/_/g, ' '),
+            details: `${activity.type.replace(/_/g, ' ')} activity`,
+            timestamp: activity.timestamp || userActivity.date
+          });
+        }
+      }
+      
+      // Sort by timestamp and limit to 10 most recent
+      recentActivity.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      const limitedRecentActivity = recentActivity.slice(0, 10);
+
+      // Format projects with additional stats
+      const projectsWithStats = userProjects.map(project => ({
+        ...project.toObject(),
+        totalLikes: project.analytics?.totalLikes || 0,
+        totalViews: project.analytics?.views || 0,
+        totalComments: project.analytics?.totalComments || 0,
+        isLiked: project.likes?.includes(userId) || false
+      }));
+
+      const dashboardData = {
+        user: {
+          ...user.toObject(),
+          password: undefined // Remove password from response
+        },
+        projects: {
+          owned: projectsWithStats,
+          liked: likedProjects,
+          subscribed: subscriptions
+        },
+        recentComments,
+        statistics: {
+          totalProjectsCreated,
+          totalCommentsPosted,
+          totalLikesReceived: totalLikesReceived[0]?.totalLikes || 0,
+          totalProjectViews: totalProjectViews[0]?.totalViews || 0,
+          unreadNotifications: unreadNotificationsCount
+        },
+        recentActivity: limitedRecentActivity.map(activity => ({
+          id: activity._id.toString(),
+          action: activity.action,
+          details: activity.details,
+          timestamp: activity.timestamp,
+          type: activity.action?.includes('project') ? 'project' :
+                activity.action?.includes('comment') ? 'comment' :
+                activity.action?.includes('like') ? 'like' : 'general'
+        }))
+      };
+
+      res.json({
+        success: true,
+        data: dashboardData
+      });
+
+    } catch (error) {
+      console.error('Dashboard data error:', error);
+      res.status(500).json({
+        success: false,
+        error: 'Failed to get dashboard data'
       });
     }
   });

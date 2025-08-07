@@ -238,6 +238,20 @@ export const uploadApi = {
     });
     return handleResponse(response);
   },
+
+  async uploadFiles(files: FileList): Promise<ApiResponse<{ files: Array<{ type: string; filename: string; originalName: string; data?: string; url?: string; size: number; mimetype: string; category: string; icon: string }> }>> {
+    const formData = new FormData();
+    for (let i = 0; i < files.length; i++) {
+      formData.append('files', files[i]);
+    }
+
+    const response = await fetch(`${API_BASE}/upload/files`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    return handleResponse(response);
+  },
 };
 
 // Comments API
@@ -398,6 +412,61 @@ export const usersApi = {
 
   async getUserSubscriptions(id: string): Promise<ApiResponse<{ projects: Project[] }>> {
     const response = await fetch(`${API_BASE}/users/${id}/subscriptions`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+};
+
+// Categories API
+export const categoriesApi = {
+  async getCategories(includeInactive: boolean = false): Promise<ApiResponse<{ categories: any[] }>> {
+    const response = await fetch(`${API_BASE}/categories?includeInactive=${includeInactive}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getCategory(id: string): Promise<ApiResponse<{ category: any }>> {
+    const response = await fetch(`${API_BASE}/categories/${id}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async createCategory(categoryData: any): Promise<ApiResponse<{ category: any }>> {
+    const response = await fetch(`${API_BASE}/categories`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(categoryData),
+    });
+    return handleResponse(response);
+  },
+
+  async updateCategory(id: string, updates: any): Promise<ApiResponse<{ category: any }>> {
+    const response = await fetch(`${API_BASE}/categories/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(updates),
+    });
+    return handleResponse(response);
+  },
+
+  async deleteCategory(id: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/categories/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+};
+
+// Tags API
+export const tagsApi = {
+  async getPopularTags(limit: number = 20): Promise<ApiResponse<{ tags: { tag: string, count: number }[] }>> {
+    const response = await fetch(`${API_BASE}/tags/popular?limit=${limit}`, {
       credentials: 'include',
     });
     return handleResponse(response);
@@ -591,6 +660,115 @@ export const adminApi = {
   async getDatabaseHealth(): Promise<ApiResponse<any>> {
     const response = await fetch(`${API_BASE}/admin/system/health`, {
       credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+};
+
+// Notifications API
+export const notificationsApi = {
+  async getNotifications(params: {
+    page?: number;
+    limit?: number;
+    includeRead?: boolean;
+  } = {}): Promise<ApiResponse<{ 
+    notifications: any[];
+    pagination: {
+      page: number;
+      limit: number;
+      total: number;
+      totalPages: number;
+      hasNextPage: boolean;
+      hasPrevPage: boolean;
+    }
+  }>> {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set('page', params.page.toString());
+    if (params.limit) searchParams.set('limit', params.limit.toString());
+    if (params.includeRead) searchParams.set('includeRead', params.includeRead.toString());
+
+    const response = await fetch(`${API_BASE}/notifications?${searchParams}`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getUnreadCount(): Promise<ApiResponse<{ count: number }>> {
+    const response = await fetch(`${API_BASE}/notifications/unread/count`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async markAsRead(id: string): Promise<ApiResponse<{ notification: any }>> {
+    const response = await fetch(`${API_BASE}/notifications/${id}/read`, {
+      method: 'PUT',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async markAllAsRead(): Promise<ApiResponse<{ modifiedCount: number }>> {
+    const response = await fetch(`${API_BASE}/notifications/mark-all-read`, {
+      method: 'PUT',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async deleteNotification(id: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/notifications/${id}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+};
+
+// Dashboard API
+export const dashboardApi = {
+  async getDashboardData(): Promise<ApiResponse<{
+    user: User;
+    projects: {
+      owned: Project[];
+      liked: Project[];
+      subscribed: Project[];
+    };
+    recentComments: Comment[];
+    statistics: {
+      totalProjectsCreated: number;
+      totalCommentsPosted: number;
+      totalLikesReceived: number;
+      totalProjectViews: number;
+      unreadNotifications: number;
+    };
+    recentActivity: Array<{
+      id: string;
+      action: string;
+      details: string;
+      timestamp: Date;
+      type: string;
+    }>;
+  }>> {
+    const response = await fetch(`${API_BASE}/dashboard`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+};
+
+// Contact API
+export const contactApi = {
+  async submitContactForm(contactData: {
+    name: string;
+    email: string;
+    message: string;
+  }): Promise<ApiResponse<{ id: string; createdAt: Date }>> {
+    const response = await fetch(`${API_BASE}/contact`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(contactData),
     });
     return handleResponse(response);
   },

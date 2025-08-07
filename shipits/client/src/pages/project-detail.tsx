@@ -2,11 +2,13 @@ import { useState, useEffect } from "react";
 import { Link, useParams } from "wouter";
 import { 
   Play, Heart, Share2, Bookmark, ArrowLeft, MessageSquare, 
-  Calendar, Users, Eye, Send, Trash2
+  Calendar, Users, Eye, Send, Trash2, Edit3, Save, X, Download, File as FileIcon
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Textarea } from "@/components/ui/textarea";
+import { Input } from "@/components/ui/input";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
 import { projectsApi, commentsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -15,13 +17,28 @@ import { CommentThread } from "@/components/CommentThread";
 import { ThreadSummary } from "@/components/ThreadSummary";
 import { ShareButton } from "@/components/ShareButton";
 import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/components/YouTubeEmbed";
+import { useIsMobile } from "@/hooks/use-mobile";
 import type { Project, Comment } from "@shared/schema";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from "@/components/ui/carousel";
+
+// Utility function to filter out placeholder/invalid updates
+const isValidUpdate = (update: any) => {
+  return update && 
+    update.title && 
+    update.title.trim() !== '' && 
+    update.content && 
+    update.content.trim() !== '' &&
+    !update.title.toLowerCase().includes('users can make updates') &&
+    !update.title.toLowerCase().includes('placeholder') &&
+    !update.title.toLowerCase().includes('sample') &&
+    !update.title.toLowerCase().includes('test update');
+};
 
 export default function ProjectDetail() {
   const { id } = useParams();
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
   
   const [project, setProject] = useState<Project | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -47,6 +64,21 @@ export default function ProjectDetail() {
     commentId: "",
     commentContent: "",
   });
+  
+  // Project edit/delete state
+  const [editingProject, setEditingProject] = useState(false);
+  const [projectEditForm, setProjectEditForm] = useState({
+    title: "",
+    description: "",
+    tags: [] as string[],
+    status: "active" as "active" | "inactive" | "archived" | "completed"
+  });
+  const [savingProject, setSavingProject] = useState(false);
+  const [deleteProjectConfirm, setDeleteProjectConfirm] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
+
+  // Get filtered valid updates
+  const validUpdates = updates.filter(isValidUpdate);
 
   const handleShare = async (platform: string) => {
     if (!project) return;
@@ -66,6 +98,108 @@ export default function ProjectDetail() {
       console.error('Failed to record share:', error);
       // Don't show error to user since sharing still works
     }
+  };
+
+  // Project edit handlers
+  const handleEditProject = () => {
+    if (!project) return;
+    setProjectEditForm({
+      title: project.title,
+      description: project.description,
+      tags: project.tags || [],
+      status: project.status || "active"
+    });
+    setEditingProject(true);
+  };
+
+  const handleSaveProject = async () => {
+    if (!project || !projectEditForm.title.trim() || !projectEditForm.description.trim()) {
+      toast({
+        title: "Error",
+        description: "Title and description are required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setSavingProject(true);
+    try {
+      const response = await projectsApi.updateProject(project._id, {
+        title: projectEditForm.title.trim(),
+        description: projectEditForm.description.trim(),
+        tags: projectEditForm.tags,
+        status: projectEditForm.status
+      });
+
+      if (response.success && response.data?.project) {
+        setProject(response.data.project);
+        setEditingProject(false);
+        toast({
+          title: "Success",
+          description: "Project updated successfully"
+        });
+      } else {
+        throw new Error(response.error || "Failed to update project");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update project",
+        variant: "destructive"
+      });
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProject(false);
+    setProjectEditForm({
+      title: "",
+      description: "",
+      tags: [],
+      status: "active"
+    });
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project) return;
+    
+    setDeletingProject(true);
+    try {
+      const response = await projectsApi.deleteProject(project._id);
+      
+      if (response.success) {
+        toast({
+          title: "Success",
+          description: "Project deleted successfully"
+        });
+        // Redirect to forum page
+        window.location.href = "/forum";
+      } else {
+        throw new Error(response.error || "Failed to delete project");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error", 
+        description: error.message || "Failed to delete project",
+        variant: "destructive"
+      });
+    } finally {
+      setDeletingProject(false);
+      setDeleteProjectConfirm(false);
+    }
+  };
+
+  // Comment edit handler
+  const handleEditComment = (commentId: string, newContent: string) => {
+    setComments(prevComments => 
+      prevComments.map(comment => 
+        comment._id === commentId 
+          ? { ...comment, content: newContent, edited: true }
+          : comment
+      )
+    );
   };
 
   useEffect(() => {
@@ -174,6 +308,16 @@ export default function ProjectDetail() {
       if (response.success) {
         setComments([response.data.comment, ...comments]);
         setNewComment("");
+        
+        // Update project analytics in local state
+        setProject(prev => prev ? {
+          ...prev,
+          analytics: {
+            ...prev.analytics,
+            totalComments: (prev.analytics?.totalComments || 0) + 1
+          }
+        } : null);
+        
         toast({
           title: "Comment Posted",
           description: "Your comment has been posted successfully.",
@@ -222,6 +366,16 @@ export default function ProjectDetail() {
       
       if (response.success) {
         setComments(comments.filter(c => c._id !== deleteConfirm.commentId));
+        
+        // Update project analytics in local state (decrement comment count)
+        setProject(prev => prev ? {
+          ...prev,
+          analytics: {
+            ...prev.analytics,
+            totalComments: Math.max((prev.analytics?.totalComments || 0) - 1, 0)
+          }
+        } : null);
+        
         toast({
           title: "Comment Deleted",
           description: "The comment has been successfully deleted.",
@@ -255,6 +409,24 @@ export default function ProjectDetail() {
       return;
     }
 
+    if (newUpdate.title.length > 200) {
+      toast({
+        title: "Title Too Long",
+        description: "Update title must be 200 characters or less.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newUpdate.content.length > 5000) {
+      toast({
+        title: "Content Too Long", 
+        description: "Update content must be 5000 characters or less.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setSubmittingUpdate(true);
 
     try {
@@ -267,6 +439,14 @@ export default function ProjectDetail() {
           title: "Update Posted",
           description: "Your project update has been posted successfully.",
         });
+        
+        // Scroll to the updates section to show the new update
+        setTimeout(() => {
+          const updatesSection = document.querySelector('[value="updates"]');
+          if (updatesSection) {
+            updatesSection.click();
+          }
+        }, 100);
       }
     } catch (err) {
       console.error('Error posting update:', err);
@@ -391,6 +571,16 @@ export default function ProjectDetail() {
       if (response.success) {
         // Add the reply to the comments list
         setComments([...comments, response.data.comment]);
+        
+        // Update project analytics in local state (replies count as comments)
+        setProject(prev => prev ? {
+          ...prev,
+          analytics: {
+            ...prev.analytics,
+            totalComments: (prev.analytics?.totalComments || 0) + 1
+          }
+        } : null);
+        
         toast({
           title: "Reply Posted",
           description: "Your reply has been posted successfully.",
@@ -447,12 +637,12 @@ export default function ProjectDetail() {
       />
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
-        <div className="container mx-auto px-2 sm:px-4 md:px-6 py-4 md:py-8">
+        <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <Link href="/forum">
-              <Button variant="ghost" size="sm">
-                <ArrowLeft className="w-4 h-4 mr-2" />
-                Back to Forum
+              <Button variant="ghost" size="sm" className="p-2">
+                <ArrowLeft className="w-4 h-4" />
+                {!isMobile && <span className="ml-2">Back to Forum</span>}
               </Button>
             </Link>
             <div className="flex items-center gap-2">
@@ -462,15 +652,17 @@ export default function ProjectDetail() {
                   size="sm"
                   onClick={handleSubscribe}
                   disabled={subscribing}
-                  className={isSubscribed ? "bg-maroon hover:bg-maroon/90" : ""}
+                  className={`${isSubscribed ? "bg-maroon hover:bg-maroon/90" : ""} ${isMobile ? "px-2" : ""}`}
                 >
                   {subscribing ? (
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current mr-2"></div>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
                   ) : (
-                <Bookmark className="w-4 h-4 mr-2" />
+                    <Bookmark className="w-4 h-4" />
                   )}
-                  {isSubscribed ? "Subscribed" : "Subscribe"}
-              </Button>
+                  {!isMobile && (
+                    <span className="ml-2">{isSubscribed ? "Subscribed" : "Subscribe"}</span>
+                  )}
+                </Button>
               )}
               <ShareButton
                 title={project.title}
@@ -486,21 +678,94 @@ export default function ProjectDetail() {
       </div>
 
       {/* Main Content */}
-      <div className="container mx-auto px-2 sm:px-4 md:px-6 py-8">
+      <div className="container mx-auto px-4 py-6">
         <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 md:gap-8">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Main Content */}
             <div className="lg:col-span-2">
               {/* Project Header */}
               <div className="bg-white rounded-lg shadow-sm p-3 sm:p-4 md:p-6 mb-6">
                 <div className="flex flex-col sm:flex-row items-start justify-between mb-4 gap-2 sm:gap-0">
-                  <div>
-                    <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-2">
-                      {project.title}
-                    </h1>
-                    <p className="text-xs sm:text-sm text-gray-600">
-                      By {project.ownerId?.fullName || project.ownerId?.username}
-                    </p>
+                  <div className="flex-1">
+                    {editingProject ? (
+                      <div className="space-y-4">
+                        <div>
+                          <Input
+                            value={projectEditForm.title}
+                            onChange={(e) => setProjectEditForm(prev => ({ ...prev, title: e.target.value }))}
+                            className="text-2xl sm:text-3xl font-bold"
+                            placeholder="Project title"
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <select
+                            value={projectEditForm.status}
+                            onChange={(e) => setProjectEditForm(prev => ({ ...prev, status: e.target.value as any }))}
+                            className="px-3 py-1 rounded-full text-sm font-medium border border-gray-300"
+                          >
+                            <option value="active">Active</option>
+                            <option value="completed">Completed</option>
+                            <option value="inactive">Inactive</option>
+                            <option value="archived">Archived</option>
+                          </select>
+                          <Button 
+                            onClick={handleSaveProject} 
+                            disabled={savingProject}
+                            size="sm"
+                            className="bg-green-600 hover:bg-green-700"
+                          >
+                            {savingProject ? (
+                              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                            ) : (
+                              <Save className="w-4 h-4 mr-2" />
+                            )}
+                            Save
+                          </Button>
+                          <Button 
+                            onClick={handleCancelEdit} 
+                            variant="outline" 
+                            size="sm"
+                          >
+                            <X className="w-4 h-4 mr-2" />
+                            Cancel
+                          </Button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
+                            {project.title}
+                          </h1>
+                          {/* Edit/Delete buttons for project owner */}
+                          {isAuthenticated && project.ownerId._id === user?._id && (
+                            <div className="flex items-center gap-1 ml-2">
+                              <Button
+                                onClick={handleEditProject}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0"
+                                title="Edit project"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </Button>
+                              <Button
+                                onClick={() => setDeleteProjectConfirm(true)}
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
+                                title="Delete project"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </Button>
+                            </div>
+                          )}
+                        </div>
+                        <p className="text-xs sm:text-sm text-gray-600">
+                          By {project.ownerId?.fullName || project.ownerId?.username}
+                        </p>
+                      </>
+                    )}
                   </div>
                   <div className="flex flex-row flex-wrap items-center gap-2 mt-2 sm:mt-0">
                     <span className={`px-3 py-1 rounded-full text-sm font-medium ${
@@ -598,7 +863,7 @@ export default function ProjectDetail() {
                         return (
                           <img 
                             src={getProjectImageUrl(project)}
-                            alt={project.title}
+                            alt={`${project.title} - Main project image`}
                             className="w-full h-48 sm:h-96 object-cover rounded-lg"
                           />
                         );
@@ -608,50 +873,92 @@ export default function ProjectDetail() {
                 </div>
 
                 {/* Project Stats */}
-                <div className="flex flex-col sm:flex-row items-center justify-between mb-6 p-3 sm:p-4 md:p-6 bg-gray-50 rounded-lg gap-2 sm:gap-0">
-                  <div className="flex items-center gap-6">
-                    <button 
-                      onClick={handleLike}
-                      disabled={liking}
-                      className={`flex items-center gap-2 transition-colors hover:text-red-500 ${
-                        isLiked ? 'text-red-500' : 'text-gray-600'
-                      } ${liking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
-                    >
-                      <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} />
-                      <span>{project.analytics?.totalLikes || 0} likes</span>
-                    </button>
-                    <div className="flex items-center gap-2 text-gray-600">
-                      <MessageSquare className="w-5 h-5" />
-                      <span>{project.analytics?.totalComments || 0} comments</span>
+                <section className="flex flex-col sm:flex-row items-center justify-between mb-6 p-3 sm:p-4 md:p-6 bg-gray-50 rounded-lg gap-2 sm:gap-0" aria-label="Project engagement statistics">
+                  <dl className="flex items-center gap-6">
+                    <div className="flex items-center gap-2">
+                      <dt className="sr-only">Project likes</dt>
+                      <dd>
+                        <button 
+                          onClick={handleLike}
+                          disabled={liking}
+                          className={`flex items-center gap-2 transition-colors hover:text-red-500 ${
+                            isLiked ? 'text-red-500' : 'text-gray-600'
+                          } ${liking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+                          aria-label={isLiked ? 
+                            `Unlike project (${project.analytics?.totalLikes || 0} likes)` : 
+                            `Like project (${project.analytics?.totalLikes || 0} likes)`}
+                          title={isLiked ? 'Unlike project' : 'Like project'}
+                        >
+                          <Heart className={`w-5 h-5 ${isLiked ? 'fill-current' : ''}`} aria-hidden="true" />
+                          <span>{project.analytics?.totalLikes || 0} likes</span>
+                        </button>
+                      </dd>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600">
-                      <Eye className="w-5 h-5" />
-                      <span>{project.analytics?.views || 0} views</span>
+                      <dt className="sr-only">Comments count</dt>
+                      <dd className="flex items-center gap-2">
+                        <MessageSquare className="w-5 h-5" aria-hidden="true" />
+                        <span>{project.analytics?.totalComments || 0} comments</span>
+                      </dd>
                     </div>
                     <div className="flex items-center gap-2 text-gray-600">
-                      <Share2 className="w-5 h-5" />
-                      <span>{project.analytics?.shares || 0} shares</span>
+                      <dt className="sr-only">Views count</dt>
+                      <dd className="flex items-center gap-2">
+                        <Eye className="w-5 h-5" aria-hidden="true" />
+                        <span>{project.analytics?.views || 0} views</span>
+                      </dd>
                     </div>
-                  </div>
+                    <div className="flex items-center gap-2 text-gray-600">
+                      <dt className="sr-only">Shares count</dt>
+                      <dd className="flex items-center gap-2">
+                        <Share2 className="w-5 h-5" aria-hidden="true" />
+                        <span>{project.analytics?.shares || 0} shares</span>
+                      </dd>
+                    </div>
+                  </dl>
                   <div className="text-sm text-gray-500">
                     Created {formatDate(project.createdAt)}
                   </div>
-                </div>
+                </section>
 
                 {/* Project Tabs */}
                 <Tabs defaultValue="overview" className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
                     <TabsTrigger value="overview">Overview</TabsTrigger>
-                    <TabsTrigger value="updates">Updates ({project.updates?.length || 0})</TabsTrigger>
+                                                    <TabsTrigger value="updates">
+                                  Updates ({validUpdates.length})
+                                </TabsTrigger>
                     <TabsTrigger value="comments">Comments ({comments.length})</TabsTrigger>
                   </TabsList>
                   
                   <TabsContent value="overview" className="mt-6">
                     <div className="prose max-w-none">
                       <h3 className="text-lg font-semibold mb-4">About This Project</h3>
-                      <p className="text-gray-700 leading-relaxed whitespace-pre-line">
-                        {project.description}
-                      </p>
+                      {editingProject ? (
+                        <div className="space-y-4">
+                          <Textarea
+                            value={projectEditForm.description}
+                            onChange={(e) => setProjectEditForm(prev => ({ ...prev, description: e.target.value }))}
+                            placeholder="Project description"
+                            className="min-h-[120px]"
+                          />
+                          <div>
+                            <label className="block text-sm font-medium mb-2">Tags (comma-separated)</label>
+                            <Input
+                              value={projectEditForm.tags.join(', ')}
+                              onChange={(e) => setProjectEditForm(prev => ({ 
+                                ...prev, 
+                                tags: e.target.value.split(',').map(tag => tag.trim()).filter(tag => tag) 
+                              }))}
+                              placeholder="e.g., web development, react, javascript"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-gray-700 leading-relaxed whitespace-pre-line">
+                          {project.description}
+                        </p>
+                      )}
                       
                       {project.tags && project.tags.length > 0 && (
                         <div className="mt-6">
@@ -669,62 +976,120 @@ export default function ProjectDetail() {
                         </div>
                       )}
 
-                      {/* Media Gallery */}
+                      {/* Media Gallery & File Attachments */}
                       {project.media && project.media.length > 0 && (
-                        <div className="mt-6">
-                          <h4 className="text-md font-semibold mb-3">Project Gallery</h4>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {project.media.map((media, index) => (
-                              <div key={index} className="relative group">
-                                {media.type === 'image' ? (
-                                  <img
-                                    src={media.data || media.url}
-                                    alt={media.caption || `Project media ${index + 1}`}
-                                    className="w-full h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                    onClick={() => {
-                                      const imageUrl = media.data || media.url;
-                                      if (imageUrl) window.open(imageUrl, '_blank');
-                                    }}
-                                  />
-                                ) : media.type === 'video' ? (
-                                  // Check if it's a YouTube URL or regular video
-                                  media.url && isValidYouTubeUrl(media.url) ? (
-                                    <div className="w-full">
-                                      <YouTubeEmbed
-                                        videoId={extractYouTubeVideoId(media.url)!}
-                                        title={media.caption || 'Project Video'}
-                                        width={400}
-                                        height={225}
-                                        showTitle={false}
-                                      />
-                                      {media.caption && (
-                                        <p className="text-sm text-gray-600 mt-2 px-2">
-                                          {media.caption}
-                                        </p>
+                        <div className="mt-6 space-y-6">
+                          {/* Images and Videos */}
+                          {project.media.some(media => media.type === 'image' || media.type === 'video') && (
+                            <section aria-labelledby="media-gallery-heading">
+                              <h4 id="media-gallery-heading" className="text-md font-semibold mb-3">Project Gallery</h4>
+                              <ul className="grid grid-cols-1 md:grid-cols-2 gap-4" role="list">
+                                {project.media
+                                  .filter(media => media.type === 'image' || media.type === 'video')
+                                  .map((media, index) => (
+                                    <li key={index} className="relative group">
+                                      {media.type === 'image' ? (
+                                        <img
+                                          src={media.data || media.url}
+                                          alt={media.caption || `${project.title} - Project image ${index + 1}`}
+                                          className="w-full h-48 object-cover rounded-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                          onClick={() => {
+                                            const imageUrl = media.data || media.url;
+                                            if (imageUrl) window.open(imageUrl, '_blank');
+                                          }}
+                                        />
+                                      ) : media.type === 'video' ? (
+                                        // Check if it's a YouTube URL or regular video
+                                        media.url && isValidYouTubeUrl(media.url) ? (
+                                          <div className="w-full">
+                                            <YouTubeEmbed
+                                              videoId={extractYouTubeVideoId(media.url)!}
+                                              title={media.caption || 'Project Video'}
+                                              width={400}
+                                              height={225}
+                                              showTitle={false}
+                                            />
+                                            {media.caption && (
+                                              <p className="text-sm text-gray-600 mt-2 px-2">
+                                                {media.caption}
+                                              </p>
+                                            )}
+                                          </div>
+                                        ) : (
+                                          // Regular video file
+                                          <video
+                                            src={media.data || media.url}
+                                            controls
+                                            className="w-full h-48 object-cover rounded-lg"
+                                            poster={(media.data || media.url) + '#t=0.1'}
+                                          />
+                                        )
+                                      ) : null}
+                                      
+                                      {/* Caption overlay for non-YouTube videos */}
+                                      {media.type !== 'video' || !media.url || !isValidYouTubeUrl(media.url) ? (
+                                        media.caption && (
+                                          <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <p className="text-sm">{media.caption}</p>
+                                          </div>
+                                        )
+                                      ) : null}
+                                    </li>
+                                  ))}
+                              </ul>
+                            </section>
+                          )}
+
+                          {/* File Attachments */}
+                          {project.media.some(media => media.type === 'document' || media.type === 'archive' || media.type === 'other') && (
+                            <section aria-labelledby="file-attachments-heading">
+                              <h4 id="file-attachments-heading" className="text-md font-semibold mb-3">File Attachments</h4>
+                              <div className="space-y-2">
+                                {project.media
+                                  .filter(media => media.type === 'document' || media.type === 'archive' || media.type === 'other')
+                                  .map((file, index) => (
+                                    <div key={index} className="flex items-center justify-between bg-gray-50 rounded-lg p-4 hover:bg-gray-100 transition-colors">
+                                      <div className="flex items-center gap-3">
+                                        <div className="text-2xl">
+                                          {file.mimetype?.includes('pdf') ? '📄' :
+                                           file.mimetype?.includes('word') || file.mimetype?.includes('document') ? '📝' :
+                                           file.mimetype?.includes('excel') || file.mimetype?.includes('spreadsheet') ? '📊' :
+                                           file.mimetype?.includes('powerpoint') || file.mimetype?.includes('presentation') ? '📋' :
+                                           file.mimetype?.includes('zip') || file.mimetype?.includes('rar') || file.mimetype?.includes('7z') ? '🗜️' :
+                                           file.mimetype?.includes('text') ? '📋' : '📎'}
+                                        </div>
+                                        <div>
+                                          <p className="font-medium text-gray-900">
+                                            {file.originalName || file.filename}
+                                          </p>
+                                          <p className="text-sm text-gray-500">
+                                            {file.size ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : ''} 
+                                            {file.size && file.mimetype && ' • '} 
+                                            {file.mimetype}
+                                          </p>
+                                          {file.description && (
+                                            <p className="text-sm text-gray-600 mt-1">{file.description}</p>
+                                          )}
+                                        </div>
+                                      </div>
+                                      
+                                      {(file.url || file.data) && (
+                                        <a
+                                          href={file.url || file.data}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          className="flex items-center gap-2 px-3 py-2 bg-maroon text-white rounded-lg hover:bg-maroon/90 transition-colors"
+                                          title={`Download ${file.originalName || file.filename}`}
+                                        >
+                                          <Download className="w-4 h-4" />
+                                          <span className="text-sm">Download</span>
+                                        </a>
                                       )}
                                     </div>
-                                  ) : (
-                                    // Regular video file
-                                    <video
-                                      src={media.data || media.url}
-                                      controls
-                                      className="w-full h-48 object-cover rounded-lg"
-                                      poster={(media.data || media.url) + '#t=0.1'}
-                                    />
-                                  )
-                                ) : null}
-                                
-                                {/* Caption overlay for non-YouTube videos */}
-                                {media.type !== 'video' || !media.url || !isValidYouTubeUrl(media.url) ? (
-                                  media.caption && (
-                                    <div className="absolute bottom-0 left-0 right-0 bg-black bg-opacity-50 text-white p-2 rounded-b-lg opacity-0 group-hover:opacity-100 transition-opacity">
-                                      <p className="text-sm">{media.caption}</p>
-                                    </div>
-                                  )
-                                ) : null}
+                                  ))}
                               </div>
-                            ))}
-                          </div>
+                            </section>
+                          )}
                         </div>
                       )}
                     </div>
@@ -735,12 +1100,19 @@ export default function ProjectDetail() {
                   <TabsContent value="updates" className="mt-6">
                     {/* Post Update Form - Only for project owner */}
                     {isAuthenticated && project && project.ownerId._id === user?._id && (
-                      <div className="bg-gray-50 rounded-lg p-6 mb-6">
-                        <h3 className="text-lg font-semibold mb-4">Post New Update</h3>
+                      <div className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-6 mb-6 shadow-sm">
+                        <div className="flex items-center gap-2 mb-4">
+                          <MessageSquare className="w-5 h-5 text-maroon" />
+                          <h3 className="text-lg font-semibold text-gray-900">Share an Update</h3>
+                        </div>
+                        <p className="text-sm text-gray-600 mb-4">
+                          Keep your community engaged by sharing progress, milestones, or new features.
+                        </p>
+                        
                         <form onSubmit={handleSubmitUpdate} className="space-y-4">
                           <div>
                             <label htmlFor="update-title" className="block text-sm font-medium text-gray-700 mb-2">
-                              Update Title
+                              Update Title <span className="text-red-500">*</span>
                             </label>
                             <input
                               id="update-title"
@@ -748,71 +1120,113 @@ export default function ProjectDetail() {
                               value={newUpdate.title}
                               onChange={(e) => setNewUpdate({ ...newUpdate, title: e.target.value })}
                               placeholder="What's new in your project?"
-                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-maroon focus:border-transparent"
+                              maxLength={200}
+                              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-maroon focus:border-transparent transition-colors"
                               required
                             />
+                            <div className="flex justify-between items-center mt-1">
+                              <div className="text-xs text-gray-500">
+                                Keep it concise and descriptive
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {newUpdate.title.length}/200
+                              </div>
+                            </div>
                           </div>
+                          
                           <div>
                             <label htmlFor="update-content" className="block text-sm font-medium text-gray-700 mb-2">
-                              Update Details
+                              Update Details <span className="text-red-500">*</span>
                             </label>
                             <Textarea
                               id="update-content"
                               value={newUpdate.content}
                               onChange={(e) => setNewUpdate({ ...newUpdate, content: e.target.value })}
-                              placeholder="Describe the new features, improvements, or changes..."
-                              rows={4}
-                              className="w-full"
+                              placeholder="Describe the new features, improvements, changes, or progress you've made..."
+                              rows={6}
+                              maxLength={5000}
+                              className="w-full resize-none"
                               required
                             />
+                            <div className="flex justify-between items-center mt-1">
+                              <div className="text-xs text-gray-500">
+                                Share details that will help others understand your progress
+                              </div>
+                              <div className="text-xs text-gray-400">
+                                {newUpdate.content.length}/5000
+                              </div>
+                            </div>
                           </div>
-                          <Button 
-                            type="submit" 
-                            disabled={submittingUpdate || !newUpdate.title.trim() || !newUpdate.content.trim()}
-                            className="bg-maroon hover:bg-maroon/90"
-                          >
-                            {submittingUpdate ? (
-                              <>
-                                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                                Posting Update...
-                              </>
-                            ) : (
-                              <>
-                                <Send className="w-4 h-4 mr-2" />
-                                Post Update
-                              </>
-                            )}
-                          </Button>
+                          
+                          <div className="flex items-center justify-between pt-2">
+                            <div className="text-xs text-gray-500">
+                              💡 <strong>Tip:</strong> Include screenshots, demos, or links to showcase your work
+                            </div>
+                            <Button 
+                              type="submit" 
+                              disabled={
+                                submittingUpdate || 
+                                !newUpdate.title.trim() || 
+                                !newUpdate.content.trim() || 
+                                newUpdate.title.length > 200 || 
+                                newUpdate.content.length > 5000
+                              }
+                              className="bg-maroon hover:bg-maroon/90 disabled:opacity-50 disabled:cursor-not-allowed px-6"
+                            >
+                              {submittingUpdate ? (
+                                <>
+                                  <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                                  Publishing...
+                                </>
+                              ) : (
+                                <>
+                                  <Send className="w-4 h-4 mr-2" />
+                                  Publish Update
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         </form>
                       </div>
                     )}
 
                     {/* Updates List */}
                     <div className="space-y-6">
-                      {updates.length > 0 ? (
-                        updates.map((update, index) => (
-                          <div key={index} className="bg-white border border-gray-200 rounded-lg p-6">
+                      {validUpdates.length > 0 ? (
+                        validUpdates.map((update, index) => (
+                          <div key={update._id || index} className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-start justify-between mb-3">
                               <h4 className="text-lg font-semibold text-gray-900">
                                 {update.title}
                               </h4>
-                              <span className="text-sm text-gray-500">
-                                {formatDate(update.createdAt)}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm text-gray-500">
+                                  {formatDate(update.createdAt)}
+                                </span>
+                                {/* Show edit/delete options for project owner */}
+                                {isAuthenticated && project && project.ownerId._id === user?._id && (
+                                  <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                    {/* Future: Add edit/delete functionality */}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                             <div className="prose max-w-none">
-                              <p className="text-gray-700 whitespace-pre-line">
+                              <p className="text-gray-700 whitespace-pre-line leading-relaxed">
                                 {update.content}
                               </p>
                             </div>
                             {update.media && update.media.length > 0 && (
-                              <div className="mt-4 grid grid-cols-2 gap-2">
+                              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {update.media.map((media: any, mediaIndex: number) => (
                                   <img
                                     key={mediaIndex}
                                     src={media.data || media.url}
                                     alt={media.caption || `Update media ${mediaIndex + 1}`}
-                                    className="rounded-lg object-cover w-full h-32"
+                                    className="rounded-lg object-cover w-full h-32 hover:scale-105 transition-transform cursor-pointer"
+                                    onClick={() => {
+                                      // Future: Add lightbox/modal for image viewing
+                                    }}
                                   />
                                 ))}
                               </div>
@@ -820,17 +1234,25 @@ export default function ProjectDetail() {
                           </div>
                         ))
                       ) : (
-                        <div className="text-center py-12">
-                          <p className="text-gray-500 text-lg mb-2">No updates yet</p>
-                          <p className="text-sm text-gray-400">
+                        <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
+                          <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
+                            <MessageSquare className="w-8 h-8 text-gray-400" />
+                          </div>
+                          <h3 className="text-lg font-medium text-gray-900 mb-2">No updates yet</h3>
+                          <p className="text-gray-500 mb-4 max-w-sm mx-auto">
                             {project && project.ownerId._id === user?._id 
-                              ? "Share your progress and new features with the community!"
-                              : "Check back later for project updates."
+                              ? "Share your progress, new features, and milestones with the community!"
+                              : `Stay tuned for updates from ${project?.ownerId?.fullName || project?.ownerId?.username || 'the project owner'}.`
                             }
                           </p>
+                          {project && project.ownerId._id === user?._id && (
+                            <p className="text-sm text-gray-400">
+                              👆 Use the form above to post your first update
+                            </p>
+                          )}
                         </div>
-                        )}
-                      </div>
+                      )}
+                    </div>
                   </TabsContent>
                   
                   <TabsContent value="comments" className="mt-6">
@@ -895,6 +1317,7 @@ export default function ProjectDetail() {
                               submittingReply={submittingComment}
                               formatDate={formatDate}
                               onReactionUpdate={handleReactionUpdate}
+                              onEdit={handleEditComment}
                             />
                         ))
                       ) : (
@@ -940,35 +1363,60 @@ export default function ProjectDetail() {
               </div>
 
               {/* Project Stats */}
-              <div className="bg-white rounded-lg shadow-sm p-6">
-                <h3 className="text-lg font-semibold mb-4">Project Statistics</h3>
-                <div className="space-y-3">
+              <section className="bg-white rounded-lg shadow-sm p-6" aria-labelledby="project-stats-heading">
+                <h3 id="project-stats-heading" className="text-lg font-semibold mb-4">Project Statistics</h3>
+                <dl className="space-y-3">
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Created</span>
-                    <span className="font-medium">{formatDate(project.createdAt)}</span>
+                    <dt className="text-gray-600">Created</dt>
+                    <dd className="font-medium">{formatDate(project.createdAt)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Last Updated</span>
-                    <span className="font-medium">{formatDate(project.updatedAt)}</span>
+                    <dt className="text-gray-600">Last Updated</dt>
+                    <dd className="font-medium">{formatDate(project.updatedAt)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Views</span>
-                    <span className="font-medium">{project.analytics?.views || 0}</span>
+                    <dt className="text-gray-600">Views</dt>
+                    <dd className="font-medium">{project.analytics?.views || 0}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Comments</span>
-                    <span className="font-medium">{project.analytics?.totalComments || 0}</span>
+                    <dt className="text-gray-600">Comments</dt>
+                    <dd className="font-medium">{project.analytics?.totalComments || 0}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-gray-600">Subscribers</span>
-                    <span className="font-medium">{project.analytics?.subscribers || 0}</span>
+                    <dt className="text-gray-600">Subscribers</dt>
+                    <dd className="font-medium">{project.analytics?.subscribers || 0}</dd>
                   </div>
-                </div>
-              </div>
+                </dl>
+              </section>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Project Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteProjectConfirm}
+        onClose={() => setDeleteProjectConfirm(false)}
+        onConfirm={handleDeleteProject}
+        title="Delete Project"
+        description={`Are you sure you want to delete "${project?.title}"? This action cannot be undone and will permanently remove the project and all its comments.`}
+        confirmText="Delete Project"
+        isDestructive={true}
+        isLoading={deletingProject}
+      />
+
+      {/* Comment Deletion Confirmation Dialog */}
+      <ConfirmDialog
+        isOpen={deleteConfirm.isOpen}
+        onClose={() => setDeleteConfirm({ isOpen: false, commentId: "", commentContent: "" })}
+        onConfirm={() => {
+          handleDeleteComment(comments.find(c => c._id === deleteConfirm.commentId)!);
+        }}
+        title="Delete Comment"
+        description={`Are you sure you want to delete this comment? This action cannot be undone.`}
+        confirmText="Delete Comment"
+        isDestructive={true}
+      />
     </div>
   );
 }

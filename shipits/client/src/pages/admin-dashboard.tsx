@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { useAuth } from '@/contexts/AuthContext';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { 
@@ -19,7 +20,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { adminApi } from '@/lib/api';
+import { adminApi, categoriesApi } from '@/lib/api';
 import { Link, useLocation } from 'wouter';
 
 interface AnalyticsData {
@@ -60,6 +61,7 @@ export default function AdminDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [location, navigate] = useLocation();
+  const isMobile = useIsMobile();
   
   // Admin access check
   console.log('👤 Current user in admin dashboard:', user);
@@ -100,6 +102,13 @@ export default function AdminDashboard() {
   ]);
   const [aiInput, setAiInput] = useState('');
   const [isAiTyping, setIsAiTyping] = useState(false);
+  
+  // Category management state
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [newCategoryDescription, setNewCategoryDescription] = useState('');
+  const [newCategoryColor, setNewCategoryColor] = useState('#3b82f6');
+  const [newCategoryTags, setNewCategoryTags] = useState('');
+  const [editingCategory, setEditingCategory] = useState<any>(null);
 
   // Fetch analytics data
   const { data: analyticsData, isLoading, error, refetch } = useQuery({
@@ -129,6 +138,120 @@ export default function AdminDashboard() {
       });
     }
   });
+
+  // Category management queries and mutations
+  const { data: categoriesData, refetch: refetchCategories } = useQuery({
+    queryKey: ['categories', true], // true for includeInactive
+    queryFn: () => categoriesApi.getCategories(true),
+  });
+
+  const createCategoryMutation = useMutation({
+    mutationFn: categoriesApi.createCategory,
+    onSuccess: () => {
+      toast({
+        title: "Category Created",
+        description: "The category has been created successfully.",
+      });
+      setNewCategoryName('');
+      setNewCategoryDescription('');
+      setNewCategoryColor('#3b82f6');
+      setNewCategoryTags('');
+      refetchCategories();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error Creating Category",
+        description: error.message || "Failed to create category",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateCategoryMutation = useMutation({
+    mutationFn: ({ id, ...data }: any) => categoriesApi.updateCategory(id, data),
+    onSuccess: () => {
+      toast({
+        title: "Category Updated",
+        description: "The category has been updated successfully.",
+      });
+      setEditingCategory(null);
+      refetchCategories();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error Updating Category",
+        description: error.message || "Failed to update category",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const deleteCategoryMutation = useMutation({
+    mutationFn: categoriesApi.deleteCategory,
+    onSuccess: () => {
+      toast({
+        title: "Category Deactivated",
+        description: "The category has been deactivated successfully.",
+      });
+      refetchCategories();
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error Deactivating Category",
+        description: error.message || "Failed to deactivate category",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const handleCreateCategory = () => {
+    if (!newCategoryName.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Category name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const tagsArray = newCategoryTags
+      .split(',')
+      .map(tag => tag.trim().toLowerCase())
+      .filter(tag => tag.length > 0);
+
+    createCategoryMutation.mutate({
+      name: newCategoryName.trim(),
+      description: newCategoryDescription.trim() || undefined,
+      color: newCategoryColor,
+      tags: tagsArray,
+    });
+  };
+
+  const handleUpdateCategory = () => {
+    if (!editingCategory || !editingCategory.name?.trim()) {
+      toast({
+        title: "Validation Error",
+        description: "Category name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    const tagsArray = editingCategory.tags
+      ? (Array.isArray(editingCategory.tags) 
+          ? editingCategory.tags 
+          : editingCategory.tags.split(',').map((tag: string) => tag.trim().toLowerCase()).filter((tag: string) => tag.length > 0))
+      : [];
+
+    updateCategoryMutation.mutate({
+      id: editingCategory._id,
+      name: editingCategory.name.trim(),
+      description: editingCategory.description?.trim() || undefined,
+      color: editingCategory.color || '#3b82f6',
+      tags: tagsArray,
+      isActive: editingCategory.isActive,
+    });
+  };
 
   // AI Agent mutation
   const aiQueryMutation = useMutation({
@@ -295,7 +418,7 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
         <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-5 mb-8 glass-effect hover-lift">
+          <TabsList className="grid w-full grid-cols-6 mb-8 glass-effect hover-lift">
             <TabsTrigger value="overview" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50">
               <TrendingUp className="h-4 w-4" />
               Overview
@@ -307,6 +430,10 @@ export default function AdminDashboard() {
             <TabsTrigger value="projects" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50">
               <FolderPlus className="h-4 w-4" />
               Projects
+            </TabsTrigger>
+            <TabsTrigger value="categories" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-yellow-50 hover:to-orange-50">
+              <Settings className="h-4 w-4" />
+              Categories
             </TabsTrigger>
             <TabsTrigger value="engagement" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-pink-50 hover:to-rose-50">
               <Activity className="h-4 w-4" />
@@ -748,6 +875,189 @@ export default function AdminDashboard() {
                       </div>
                     )) || (
                       <p className="text-gray-500 text-center py-8">No project data available</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
+
+          {/* Categories Tab */}
+          <TabsContent value="categories" className="space-y-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Create New Category */}
+              <Card className="glass-effect border-0 shadow-lg">
+                <CardHeader className="bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-t-lg">
+                  <CardTitle className="flex items-center gap-2">
+                    <Plus className="h-5 w-5" />
+                    Create New Category
+                  </CardTitle>
+                  <CardDescription className="text-yellow-50">
+                    Add a new category to organize projects better
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category Name</label>
+                    <Input
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      placeholder="e.g., Artificial Intelligence"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Description</label>
+                    <Textarea
+                      value={newCategoryDescription}
+                      onChange={(e) => setNewCategoryDescription(e.target.value)}
+                      placeholder="Brief description of this category..."
+                      rows={2}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Color</label>
+                      <Input
+                        type="color"
+                        value={newCategoryColor}
+                        onChange={(e) => setNewCategoryColor(e.target.value)}
+                        className="h-10"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Associated Tags</label>
+                      <Input
+                        value={newCategoryTags}
+                        onChange={(e) => setNewCategoryTags(e.target.value)}
+                        placeholder="ai,ml,tech (comma separated)"
+                      />
+                    </div>
+                  </div>
+                  <Button 
+                    onClick={handleCreateCategory} 
+                    className="w-full bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600"
+                    disabled={createCategoryMutation.isPending}
+                  >
+                    {createCategoryMutation.isPending ? 'Creating...' : 'Create Category'}
+                  </Button>
+                </CardContent>
+              </Card>
+
+              {/* Existing Categories */}
+              <Card className="glass-effect border-0 shadow-lg">
+                <CardHeader className="bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-t-lg">
+                  <CardTitle className="flex items-center gap-2">
+                    <Settings className="h-5 w-5" />
+                    Manage Categories
+                  </CardTitle>
+                  <CardDescription className="text-blue-50">
+                    Edit or deactivate existing categories
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="space-y-4 max-h-96 overflow-y-auto">
+                    {categoriesData?.success ? (
+                      categoriesData.data.categories.length > 0 ? (
+                        categoriesData.data.categories.map((category: any) => (
+                          <div key={category._id} className="border rounded-lg p-4 space-y-3 bg-white">
+                            {editingCategory?._id === category._id ? (
+                              // Edit mode
+                              <div className="space-y-3">
+                                <Input
+                                  value={editingCategory.name}
+                                  onChange={(e) => setEditingCategory({...editingCategory, name: e.target.value})}
+                                  placeholder="Category name"
+                                />
+                                <Textarea
+                                  value={editingCategory.description || ''}
+                                  onChange={(e) => setEditingCategory({...editingCategory, description: e.target.value})}
+                                  placeholder="Description"
+                                  rows={2}
+                                />
+                                <div className="grid grid-cols-2 gap-2">
+                                  <Input
+                                    type="color"
+                                    value={editingCategory.color || '#3b82f6'}
+                                    onChange={(e) => setEditingCategory({...editingCategory, color: e.target.value})}
+                                  />
+                                  <Input
+                                    value={Array.isArray(editingCategory.tags) ? editingCategory.tags.join(', ') : editingCategory.tags || ''}
+                                    onChange={(e) => setEditingCategory({...editingCategory, tags: e.target.value})}
+                                    placeholder="Tags (comma separated)"
+                                  />
+                                </div>
+                                <div className="flex gap-2">
+                                  <Button 
+                                    onClick={handleUpdateCategory} 
+                                    size="sm"
+                                    disabled={updateCategoryMutation.isPending}
+                                  >
+                                    {updateCategoryMutation.isPending ? 'Saving...' : 'Save'}
+                                  </Button>
+                                  <Button 
+                                    onClick={() => setEditingCategory(null)} 
+                                    variant="outline" 
+                                    size="sm"
+                                  >
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              // View mode
+                              <div>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <div 
+                                      className="w-4 h-4 rounded-full" 
+                                      style={{ backgroundColor: category.color || '#3b82f6' }}
+                                    />
+                                    <h3 className="font-semibold">{category.name}</h3>
+                                    <Badge variant={category.isActive ? "default" : "secondary"}>
+                                      {category.isActive ? "Active" : "Inactive"}
+                                    </Badge>
+                                  </div>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      onClick={() => setEditingCategory(category)}
+                                      variant="outline"
+                                      size="sm"
+                                    >
+                                      Edit
+                                    </Button>
+                                    {category.isActive && (
+                                      <Button
+                                        onClick={() => deleteCategoryMutation.mutate(category._id)}
+                                        variant="destructive"
+                                        size="sm"
+                                        disabled={deleteCategoryMutation.isPending}
+                                      >
+                                        Deactivate
+                                      </Button>
+                                    )}
+                                  </div>
+                                </div>
+                                {category.description && (
+                                  <p className="text-gray-600 text-sm mt-2">{category.description}</p>
+                                )}
+                                {category.tags && category.tags.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 mt-2">
+                                    {category.tags.map((tag: string) => (
+                                      <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 rounded text-xs">
+                                        #{tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <p className="text-gray-500 text-center py-8">No categories found</p>
+                      )
+                    ) : (
+                      <p className="text-gray-500 text-center py-8">Loading categories...</p>
                     )}
                   </div>
                 </CardContent>

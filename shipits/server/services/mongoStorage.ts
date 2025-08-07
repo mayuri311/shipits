@@ -4,15 +4,15 @@
  */
 
 import { 
-  User, Project, Comment, Event, Subscription, Notification,
+  User, Project, Comment, Event, Category, Subscription, Notification,
   UserActivity, ProjectAnalytics, ForumModerationLog 
 } from '../models';
 import { Types } from 'mongoose';
 import type {
   User as UserType, Project as ProjectType, Comment as CommentType, 
-  Event as EventType, CreateUser, CreateProject, CreateComment, CreateEvent,
-  UpdateUser, UpdateProject, PaginationParams, ProjectFilters,
-  CommentFilters, EventFilters
+  Event as EventType, Category as CategoryType, CreateUser, CreateProject, 
+  CreateComment, CreateEvent, CreateCategory, UpdateUser, UpdateProject, 
+  UpdateCategory, PaginationParams, ProjectFilters, CommentFilters, EventFilters
 } from '@shared/schema';
 
 export interface IMongoStorage {
@@ -50,6 +50,14 @@ export interface IMongoStorage {
   createEvent(eventData: CreateEvent): Promise<EventType>;
   updateEvent(id: string, updates: Partial<CreateEvent>): Promise<EventType | null>;
   registerForEvent(eventId: string, userId: string): Promise<boolean>;
+  
+  // Category operations
+  getCategories(includeInactive?: boolean): Promise<CategoryType[]>;
+  getCategory(id: string): Promise<CategoryType | null>;
+  createCategory(categoryData: CreateCategory): Promise<CategoryType>;
+  updateCategory(id: string, updates: UpdateCategory): Promise<CategoryType | null>;
+  deleteCategory(id: string): Promise<boolean>;
+  getPopularTags(limit?: number): Promise<{ tag: string, count: number }[]>;
   
   // Analytics operations
   recordProjectView(projectId: string, userId?: string): Promise<void>;
@@ -461,6 +469,13 @@ export class MongoStorage implements IMongoStorage {
         ? { _id: id }
         : { _id: id, authorId: userId };
       
+      // First get the comment to check if it's already deleted
+      const existingComment = await Comment.findOne(query);
+      if (!existingComment || existingComment.isDeleted) {
+        return false; // Comment not found or already deleted
+      }
+      
+      // Update the comment - this will trigger the post-save middleware to update analytics
       const comment = await Comment.findOneAndUpdate(
         query,
         { isDeleted: true, deletedAt: new Date() },
@@ -556,6 +571,83 @@ export class MongoStorage implements IMongoStorage {
     } catch (error) {
       console.error('Error registering for event:', error);
       return false;
+    }
+  }
+
+  // Category operations
+  async getCategories(includeInactive: boolean = false): Promise<CategoryType[]> {
+    try {
+      const query = includeInactive ? {} : { isActive: true };
+      const categories = await Category.find(query)
+        .populate('createdBy', 'username fullName')
+        .sort({ name: 1 })
+        .lean();
+      return categories;
+    } catch (error) {
+      console.error('Error getting categories:', error);
+      return [];
+    }
+  }
+
+  async getCategory(id: string): Promise<CategoryType | null> {
+    try {
+      const category = await Category.findById(id)
+        .populate('createdBy', 'username fullName');
+      return category ? category.toObject() : null;
+    } catch (error) {
+      console.error('Error getting category:', error);
+      return null;
+    }
+  }
+
+  async createCategory(categoryData: CreateCategory): Promise<CategoryType> {
+    try {
+      const category = new Category(categoryData);
+      await category.save();
+      return category.toObject();
+    } catch (error) {
+      console.error('Error creating category:', error);
+      throw error;
+    }
+  }
+
+  async updateCategory(id: string, updates: UpdateCategory): Promise<CategoryType | null> {
+    try {
+      const category = await Category.findByIdAndUpdate(id, updates, { new: true })
+        .populate('createdBy', 'username fullName');
+      return category ? category.toObject() : null;
+    } catch (error) {
+      console.error('Error updating category:', error);
+      return null;
+    }
+  }
+
+  async deleteCategory(id: string): Promise<boolean> {
+    try {
+      const result = await Category.findByIdAndUpdate(id, { isActive: false }, { new: true });
+      return !!result;
+    } catch (error) {
+      console.error('Error deleting category:', error);
+      return false;
+    }
+  }
+
+  async getPopularTags(limit: number = 20): Promise<{ tag: string, count: number }[]> {
+    try {
+      const pipeline = [
+        { $match: { status: 'active', isDeleted: false } },
+        { $unwind: '$tags' },
+        { $group: { _id: '$tags', count: { $sum: 1 } } },
+        { $sort: { count: -1 } },
+        { $limit: limit },
+        { $project: { tag: '$_id', count: 1, _id: 0 } }
+      ];
+
+      const popularTags = await Project.aggregate(pipeline);
+      return popularTags;
+    } catch (error) {
+      console.error('Error getting popular tags:', error);
+      return [];
     }
   }
 

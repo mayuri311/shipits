@@ -17,10 +17,10 @@ export function HeroSection() {
               connect with peers, and turn ideas into reality. Join our community of makers, builders, and innovators.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <button className="bg-maroon text-white px-8 py-4 hover:bg-maroon-dark transition-colors duration-300 font-medium tracking-wide">
+              <button className="bg-maroon text-white px-8 py-4 hover:bg-maroon-dark transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-maroon rounded">
                 GET STARTED
               </button>
-              <button className="border-2 border-black text-black px-8 py-4 hover:bg-black hover:text-white transition-all duration-300 font-medium tracking-wide">
+              <button className="border-2 border-black text-black px-8 py-4 hover:bg-black hover:text-white transition-all duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-black focus-visible:ring-offset-2 rounded">
                 LEARN MORE
               </button>
             </div>

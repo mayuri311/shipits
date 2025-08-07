@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface INotification extends Document {
   _id: Types.ObjectId;
   recipientId: Types.ObjectId;
-  type: 'project_update' | 'comment_reply' | 'mention' | 'project_status_change' | 'new_subscriber' | 'event_registration' | 'event_reminder';
+  type: 'project_update' | 'comment_reply' | 'mention' | 'project_status_change' | 'new_subscriber' | 'event_registration' | 'event_reminder' | 'project_like' | 'comment_like' | 'new_comment';
   relatedProject?: Types.ObjectId;
   relatedComment?: Types.ObjectId;
   relatedUser?: Types.ObjectId;
@@ -22,6 +22,19 @@ export interface INotification extends Document {
   markEmailSent(): Promise<void>;
 }
 
+interface INotificationModel extends mongoose.Model<INotification> {
+  findUnreadForUser(userId: Types.ObjectId): Promise<INotification[]>;
+  findForUser(userId: Types.ObjectId, limit?: number): Promise<INotification[]>;
+  markAllAsRead(userId: Types.ObjectId): Promise<any>;
+  findPendingEmails(): Promise<INotification[]>;
+  createProjectUpdateNotification(projectId: Types.ObjectId, updateTitle: string, ownerId: Types.ObjectId): Promise<void>;
+  createCommentReplyNotification(commentId: Types.ObjectId, parentCommentId: Types.ObjectId, authorId: Types.ObjectId, projectId: Types.ObjectId): Promise<void>;
+  createProjectLikeNotification(projectId: Types.ObjectId, likerUserId: Types.ObjectId, projectOwnerId: Types.ObjectId): Promise<void>;
+  createCommentLikeNotification(commentId: Types.ObjectId, likerUserId: Types.ObjectId, commentAuthorId: Types.ObjectId, projectId: Types.ObjectId): Promise<void>;
+  createNewCommentNotification(commentId: Types.ObjectId, commentAuthorId: Types.ObjectId, projectId: Types.ObjectId, projectOwnerId: Types.ObjectId): Promise<void>;
+  createNewSubscriberNotification(projectId: Types.ObjectId, subscriberUserId: Types.ObjectId, projectOwnerId: Types.ObjectId): Promise<void>;
+}
+
 const NotificationSchema = new Schema<INotification>({
   recipientId: {
     type: Schema.Types.ObjectId,
@@ -38,7 +51,10 @@ const NotificationSchema = new Schema<INotification>({
       'project_status_change',
       'new_subscriber',
       'event_registration',
-      'event_reminder'
+      'event_reminder',
+      'project_like',
+      'comment_like',
+      'new_comment'
     ],
     required: true,
     index: true
@@ -220,4 +236,109 @@ NotificationSchema.statics.createCommentReplyNotification = async function(
   }
 };
 
-export const Notification = mongoose.model<INotification>('Notification', NotificationSchema);
+NotificationSchema.statics.createProjectLikeNotification = async function(
+  projectId: Types.ObjectId,
+  likerUserId: Types.ObjectId,
+  projectOwnerId: Types.ObjectId
+) {
+  // Don't notify if user likes their own project
+  if (likerUserId.equals(projectOwnerId)) {
+    return;
+  }
+
+  // Get project details for the message
+  const project = await mongoose.model('Project')
+    .findById(projectId)
+    .select('title');
+
+  if (project) {
+    await this.create({
+      recipientId: projectOwnerId,
+      type: 'project_like',
+      relatedProject: projectId,
+      relatedUser: likerUserId,
+      title: 'Project Liked',
+      message: `Someone liked your project: ${project.title}`
+    });
+  }
+};
+
+NotificationSchema.statics.createCommentLikeNotification = async function(
+  commentId: Types.ObjectId,
+  likerUserId: Types.ObjectId,
+  commentAuthorId: Types.ObjectId,
+  projectId: Types.ObjectId
+) {
+  // Don't notify if user likes their own comment
+  if (likerUserId.equals(commentAuthorId)) {
+    return;
+  }
+
+  await this.create({
+    recipientId: commentAuthorId,
+    type: 'comment_like',
+    relatedComment: commentId,
+    relatedProject: projectId,
+    relatedUser: likerUserId,
+    title: 'Comment Liked',
+    message: 'Someone liked your comment'
+  });
+};
+
+NotificationSchema.statics.createNewCommentNotification = async function(
+  commentId: Types.ObjectId,
+  commentAuthorId: Types.ObjectId,
+  projectId: Types.ObjectId,
+  projectOwnerId: Types.ObjectId
+) {
+  // Don't notify if project owner comments on their own project
+  if (commentAuthorId.equals(projectOwnerId)) {
+    return;
+  }
+
+  // Get project details for the message
+  const project = await mongoose.model('Project')
+    .findById(projectId)
+    .select('title');
+
+  if (project) {
+    await this.create({
+      recipientId: projectOwnerId,
+      type: 'new_comment',
+      relatedComment: commentId,
+      relatedProject: projectId,
+      relatedUser: commentAuthorId,
+      title: 'New Comment',
+      message: `Someone commented on your project: ${project.title}`
+    });
+  }
+};
+
+NotificationSchema.statics.createNewSubscriberNotification = async function(
+  projectId: Types.ObjectId,
+  subscriberUserId: Types.ObjectId,
+  projectOwnerId: Types.ObjectId
+) {
+  // Don't notify if user subscribes to their own project
+  if (subscriberUserId.equals(projectOwnerId)) {
+    return;
+  }
+
+  // Get project details for the message
+  const project = await mongoose.model('Project')
+    .findById(projectId)
+    .select('title');
+
+  if (project) {
+    await this.create({
+      recipientId: projectOwnerId,
+      type: 'new_subscriber',
+      relatedProject: projectId,
+      relatedUser: subscriberUserId,
+      title: 'New Subscriber',
+      message: `Someone subscribed to your project: ${project.title}`
+    });
+  }
+};
+
+export const Notification = mongoose.model<INotification, INotificationModel>('Notification', NotificationSchema);

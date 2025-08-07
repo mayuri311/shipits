@@ -141,8 +141,14 @@ export function ShareButton({
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant={variant} size={size} className={className}>
-          <Share2 className="w-4 h-4 mr-2" />
+        <Button 
+          variant={variant} 
+          size={size} 
+          className={className}
+          aria-label={`Share "${title}"`}
+          title={`Share "${title}"`}
+        >
+          <Share2 className="w-4 h-4 mr-2" aria-hidden="true" />
           Share
         </Button>
       </DropdownMenuTrigger>
@@ -165,32 +171,36 @@ export function ShareButton({
         <DropdownMenuItem
           onClick={() => handleShare('twitter')}
           className={`cursor-pointer ${PLATFORM_COLORS.twitter}`}
+          aria-label={`Share "${title}" on Twitter`}
         >
-          <Twitter className="w-4 h-4 mr-3" />
+          <Twitter className="w-4 h-4 mr-3" aria-hidden="true" />
           Share on Twitter
         </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={() => handleShare('facebook')}
           className={`cursor-pointer ${PLATFORM_COLORS.facebook}`}
+          aria-label={`Share "${title}" on Facebook`}
         >
-          <Facebook className="w-4 h-4 mr-3" />
+          <Facebook className="w-4 h-4 mr-3" aria-hidden="true" />
           Share on Facebook
         </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={() => handleShare('linkedin')}
           className={`cursor-pointer ${PLATFORM_COLORS.linkedin}`}
+          aria-label={`Share "${title}" on LinkedIn`}
         >
-          <Linkedin className="w-4 h-4 mr-3" />
+          <Linkedin className="w-4 h-4 mr-3" aria-hidden="true" />
           Share on LinkedIn
         </DropdownMenuItem>
 
         <DropdownMenuItem
           onClick={() => handleShare('reddit')}
           className={`cursor-pointer ${PLATFORM_COLORS.reddit}`}
+          aria-label={`Share "${title}" on Reddit`}
         >
-          <ExternalLink className="w-4 h-4 mr-3" />
+          <ExternalLink className="w-4 h-4 mr-3" aria-hidden="true" />
           Share on Reddit
         </DropdownMenuItem>
 

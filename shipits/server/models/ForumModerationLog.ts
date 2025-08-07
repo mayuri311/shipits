@@ -279,7 +279,7 @@ ForumModerationLogSchema.statics.deleteComment = async function(
     originalAuthor: comment.authorId
   };
   
-  // Delete the comment
+  // Delete the comment - this will trigger post-save middleware to update analytics
   await mongoose.model('Comment').findByIdAndUpdate(commentId, {
     isDeleted: true,
     deletedAt: new Date(),

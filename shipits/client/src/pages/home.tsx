@@ -27,23 +27,23 @@ export default function Home() {
       
       {/* Footer */}
       <footer className="bg-black text-white py-12">
-        <div className="container mx-auto px-6 max-w-6xl">
+        <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center">
-            <h3 className="text-2xl font-bold mb-4">
+            <h3 className="text-xl sm:text-2xl font-bold mb-4">
               Ship Its <span className="text-maroon">@</span> CMU
             </h3>
-            <p className="text-gray-400 mb-6">Building the Future, One Project at a Time</p>
-            <div className="flex justify-center space-x-6">
-              <a href="#" className="text-gray-400 hover:text-maroon transition-colors">
+            <p className="text-gray-400 mb-6 px-4">Building the Future, One Project at a Time</p>
+            <div className="flex justify-center space-x-4 sm:space-x-6">
+              <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
                 <Github size={24} />
               </a>
-              <a href="#" className="text-gray-400 hover:text-maroon transition-colors">
+              <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
                 <MessageSquare size={24} />
               </a>
-              <a href="#" className="text-gray-400 hover:text-maroon transition-colors">
+              <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
                 <Twitter size={24} />
               </a>
-              <a href="#" className="text-gray-400 hover:text-maroon transition-colors">
+              <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
                 <Linkedin size={24} />
               </a>
             </div>

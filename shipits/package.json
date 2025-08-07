@@ -9,7 +9,8 @@
     "start": "NODE_ENV=production node dist/index.js",
     "check": "tsc",
     "db:seed": "tsx server/seed.ts",
-    "db:reset": "tsx server/reset-db.ts"
+    "db:reset": "tsx server/reset-db.ts",
+    "cleanup:updates": "tsx server/cleanup-placeholder-updates.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",

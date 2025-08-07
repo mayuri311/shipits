@@ -1,15 +1,18 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
 export interface IProjectMedia {
-  type: 'image' | 'video';
+  type: 'image' | 'video' | 'document' | 'archive' | 'other';
   url?: string;
-  data?: string; // Base64 encoded image data
+  data?: string; // Base64 encoded data for images, or binary data for files
   filename?: string;
+  originalName?: string;
   mimetype?: string;
   size?: number;
   caption?: string;
+  description?: string;
   uploadedAt: Date;
   order: number;
+  downloadCount?: number;
 }
 
 export interface IProjectUpdate {
@@ -66,7 +69,7 @@ export interface IProject extends Document {
 const ProjectMediaSchema = new Schema<IProjectMedia>({
   type: {
     type: String,
-    enum: ['image', 'video'],
+    enum: ['image', 'video', 'document', 'archive', 'other'],
     required: true
   },
   url: {
@@ -75,11 +78,16 @@ const ProjectMediaSchema = new Schema<IProjectMedia>({
     trim: true
   },
   data: {
-    type: String, // Base64 encoded image data
+    type: String, // Base64 encoded data for images, or file path for files
     required: false,
     trim: true
   },
   filename: {
+    type: String,
+    required: false,
+    trim: true
+  },
+  originalName: {
     type: String,
     required: false,
     trim: true
@@ -98,11 +106,20 @@ const ProjectMediaSchema = new Schema<IProjectMedia>({
     trim: true,
     maxlength: 200
   },
+  description: {
+    type: String,
+    trim: true,
+    maxlength: 500
+  },
   uploadedAt: {
     type: Date,
     default: Date.now
   },
   order: {
+    type: Number,
+    default: 0
+  },
+  downloadCount: {
     type: Number,
     default: 0
   }
