@@ -62,7 +62,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const response = await authApi.register(userData);
       if (response.success && response.data) {
-        setUser(response.data.user);
+        // Do not set user immediately; require email verification and login
+        return;
       } else {
         throw new Error(response.error || 'Registration failed');
       }

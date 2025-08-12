@@ -1,10 +1,13 @@
 import { useState } from "react";
-import { Heart, Trash2, Edit3, Save, X } from "lucide-react";
+import { Heart, Trash2, Edit3, Save, X, Flag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
+import TranslatedMarkdown from "@/components/TranslatedMarkdown";
+import MarkdownEditor from "@/components/MarkdownEditor";
 import type { Comment } from "@shared/schema";
 import { useAuth } from "@/contexts/AuthContext";
-import { commentsApi } from "@/lib/api";
+import { commentsApi, reportsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 interface CommentThreadProps {
@@ -38,6 +41,10 @@ export function CommentThread({
   const [editing, setEditing] = useState(false);
   const [editContent, setEditContent] = useState(comment.content);
   const [saving, setSaving] = useState(false);
+  const [showReportDialog, setShowReportDialog] = useState(false);
+  const [reporting, setReporting] = useState(false);
+  const [reportReason, setReportReason] = useState<'spam' | 'abuse' | 'harassment' | 'hate' | 'sexual' | 'self-harm' | 'copyright' | 'other'>('spam');
+  const [reportDetails, setReportDetails] = useState('');
 
   // Get replies to this comment
   const replies = allComments.filter(c => c.parentCommentId === comment._id);
@@ -142,6 +149,28 @@ export function CommentThread({
     setEditContent(comment.content);
   };
 
+  const submitReport = async () => {
+    if (!isAuthenticated) {
+      toast({ title: 'Authentication Required', description: 'Please log in to report content.', variant: 'destructive' });
+      return;
+    }
+    setReporting(true);
+    try {
+      const res = await reportsApi.createReport({ targetType: 'comment', targetId: comment._id, reason: reportReason, details: reportDetails || undefined });
+      if (res.success) {
+        toast({ title: 'Reported', description: 'Thank you. Our moderators will review this comment.' });
+        setShowReportDialog(false);
+        setReportDetails('');
+      } else {
+        throw new Error(res.error || 'Failed to report');
+      }
+    } catch (e: any) {
+      toast({ title: 'Report Failed', description: e.message || 'Please try again later.', variant: 'destructive' });
+    } finally {
+      setReporting(false);
+    }
+  };
+
   return (
     <div className={`${depth > 0 ? 'ml-8 mt-4' : ''}`}>
       <div className="bg-gray-50 rounded-lg p-4 relative">
@@ -207,12 +236,7 @@ export function CommentThread({
         
         {editing ? (
           <div className="mb-3 space-y-2">
-            <Textarea
-              value={editContent}
-              onChange={(e) => setEditContent(e.target.value)}
-              className="min-h-[80px]"
-              disabled={saving}
-            />
+            <MarkdownEditor value={editContent} onChange={setEditContent} />
             <div className="flex items-center gap-2">
               <Button
                 onClick={handleSaveEdit}
@@ -239,9 +263,13 @@ export function CommentThread({
             </div>
           </div>
         ) : (
-          <p className="text-gray-700 whitespace-pre-line mb-3">
-            {comment.content}
-          </p>
+          <TranslatedMarkdown
+            sourceType="comment"
+            sourceId={comment._id}
+            field="content"
+            text={comment.content}
+            className="mb-3"
+          />
         )}
         <div className="flex items-center gap-4 text-sm">
           <button 
@@ -258,6 +286,14 @@ export function CommentThread({
             <Heart className={`w-4 h-4 ${comment.reactions?.some(r => r.userId === user?._id) ? 'fill-current' : ''}`} aria-hidden="true" />
             <span>{comment.reactions?.length || 0}</span>
           </button>
+          <button
+            onClick={() => setShowReportDialog(true)}
+            className="flex items-center gap-1 text-gray-500 hover:text-orange-600"
+            aria-label="Report comment"
+            title="Report comment"
+          >
+            <Flag className="w-4 h-4" /> Report
+          </button>
           <Button
             variant="ghost"
             size="sm"
@@ -272,14 +308,8 @@ export function CommentThread({
 
         {showReplyForm && (
           <div className="mt-4 p-3 bg-white rounded border">
-            <Textarea
-              value={replyContent}
-              onChange={(e) => setReplyContent(e.target.value)}
-              placeholder="Write your reply..."
-              rows={3}
-              className="mb-3"
-            />
-            <div className="flex justify-end gap-2">
+            <MarkdownEditor value={replyContent} onChange={setReplyContent} />
+            <div className="flex justify-end gap-2 mt-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -320,6 +350,43 @@ export function CommentThread({
               onEdit={onEdit}
             />
           ))}
+        </div>
+      )}
+      {showReportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-4 space-y-3">
+            <div className="text-lg font-semibold">Report Comment</div>
+            <div className="text-sm text-gray-600">Select a reason and optionally add details.</div>
+            <div>
+              <select
+                className="w-full border rounded px-2 py-2"
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value as any)}
+              >
+                <option value="spam">Spam</option>
+                <option value="abuse">Abuse</option>
+                <option value="harassment">Harassment</option>
+                <option value="hate">Hate</option>
+                <option value="sexual">Sexual</option>
+                <option value="self-harm">Self-harm</option>
+                <option value="copyright">Copyright</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <Textarea
+                placeholder="Additional details (optional)"
+                value={reportDetails}
+                onChange={(e) => setReportDetails(e.target.value)}
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowReportDialog(false)}>Cancel</Button>
+              <Button onClick={submitReport} disabled={reporting} className="bg-orange-600 hover:bg-orange-700">
+                {reporting ? 'Reporting...' : 'Submit Report'}
+              </Button>
+            </div>
+          </div>
         </div>
       )}
     </div>

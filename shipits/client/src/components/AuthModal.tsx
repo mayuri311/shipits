@@ -6,8 +6,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
+import { authApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import type { LoginRequest, RegisterRequest } from "@shared/schema";
+import HCaptcha from "@hcaptcha/react-hcaptcha";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -33,6 +35,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
   
   const [activeTab, setActiveTab] = useState(defaultTab);
   const [isLoading, setIsLoading] = useState(false);
+  const [isResetSending, setIsResetSending] = useState(false);
   
   const [loginData, setLoginData] = useState<LoginRequest>({
     email: "",
@@ -47,6 +50,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
     college: undefined,
     graduationYear: undefined
   });
+  const [captchaToken, setCaptchaToken] = useState<string | undefined>(undefined);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -60,11 +64,19 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
       });
       onClose();
     } catch (error) {
-      toast({
-        title: "Login Failed",
-        description: error instanceof Error ? error.message : "Please check your credentials and try again.",
-        variant: "destructive",
-      });
+      const message = error instanceof Error ? error.message : 'Please check your credentials and try again.';
+      if (message.toLowerCase().includes('not verified')) {
+        toast({
+          title: 'Email not verified',
+          description: 'We re-sent the verification email. Please check your inbox.',
+        });
+      } else {
+        toast({
+          title: 'Login Failed',
+          description: message,
+          variant: 'destructive',
+        });
+      }
     } finally {
       setIsLoading(false);
     }
@@ -106,10 +118,10 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
     }
     
     try {
-      await register(registerData);
+      await register({ ...registerData, captchaToken });
       toast({
-        title: "Welcome to ShipIts!",
-        description: "Your account has been created successfully.",
+        title: "Verify your email",
+        description: "We sent a verification link to your email. Please verify before logging in.",
       });
       onClose();
     } catch (error) {
@@ -144,6 +156,22 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
       });
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleForgotPassword = async () => {
+    if (!loginData.email) {
+      toast({ title: 'Enter your email', description: 'Please enter your email above first.' });
+      return;
+    }
+    setIsResetSending(true);
+    try {
+      await authApi.requestPasswordReset(loginData.email);
+      toast({ title: 'Check your email', description: 'If an account exists, a reset link has been sent.' });
+    } catch (err) {
+      toast({ title: 'Request failed', description: 'Please try again shortly.', variant: 'destructive' });
+    } finally {
+      setIsResetSending(false);
     }
   };
 
@@ -184,6 +212,16 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
                   onChange={(e) => setLoginData({...loginData, password: e.target.value})}
                   placeholder="Enter your password"
                 />
+                <div className="mt-1 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={handleForgotPassword}
+                    className="text-sm text-maroon hover:underline disabled:opacity-50"
+                    disabled={isResetSending}
+                  >
+                    {isResetSending ? 'Sending…' : 'Forgot password?'}
+                  </button>
+                </div>
               </div>
               
               <Button 
@@ -203,6 +241,11 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
                 <span className="bg-white px-2 text-gray-500">Or</span>
               </div>
             </div>
+              {import.meta.env.VITE_HCAPTCHA_SITEKEY && (
+                <div>
+                  <HCaptcha sitekey={import.meta.env.VITE_HCAPTCHA_SITEKEY} onVerify={(token) => setCaptchaToken(token)} />
+                </div>
+              )}
             
             <Button 
               variant="outline" 

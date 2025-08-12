@@ -45,6 +45,11 @@ export interface IProject extends Document {
   status: 'active' | 'inactive' | 'archived' | 'completed';
   description: string;
   tags: string[];
+  aiSummary?: string; // Optional AI-generated summary
+  aiSummaryUpdatedAt?: Date;
+  aiSuggestedTags?: string[];
+  // Optional: semantic vector for search/recommendations
+  embedding?: number[];
   media: IProjectMedia[];
   updates: IProjectUpdate[];
   analytics: IProjectAnalytics;
@@ -225,6 +230,27 @@ const ProjectSchema = new Schema<IProject>({
     lowercase: true,
     maxlength: 50
   }],
+  aiSummary: {
+    type: String,
+    trim: true,
+    maxlength: 1200
+  },
+  aiSummaryUpdatedAt: {
+    type: Date
+  },
+  aiSuggestedTags: [{
+    type: String,
+    trim: true,
+    lowercase: true,
+    maxlength: 50
+  }],
+  // Store embeddings as an array of numbers; index created below if supported
+  embedding: {
+    type: [Number],
+    required: false,
+    default: undefined,
+    // keep size modest; client enforces truncation
+  },
   media: [ProjectMediaSchema],
   updates: [ProjectUpdateSchema],
   analytics: {
@@ -280,6 +306,10 @@ ProjectSchema.index({
     description: 1
   }
 });
+
+// Note: Native vector indexes require MongoDB Atlas Vector Search or MongoDB 7.0+ with $$SEARCH integrations.
+// We add a standard index placeholder to avoid errors on local dev. If Atlas vector is available, create the
+// vector index manually via Atlas UI or an admin script.
 
 // Virtual for comment count
 ProjectSchema.virtual('commentCount', {

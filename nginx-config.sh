@@ -2,16 +2,24 @@
 
 echo "🔧 Configuring Nginx reverse proxy for ShipIts Forum..."
 
-# Get public IP for configuration
-PUBLIC_IP=$(curl -s --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 2>/dev/null || echo "")
+# 1) Define your domain and fetch EC2 public IP
+SERVER_NAME=shipits.velroi.com
+PUBLIC_IP=$(curl -s --max-time 5 http://169.254.169.254/latest/meta-data/public-ipv4 || echo "")
 
-# Create Nginx configuration
+# 2) Create Nginx configuration
 echo "📝 Creating Nginx site configuration..."
-sudo tee /etc/nginx/sites-available/shipits-forum << EOF
+sudo tee /etc/nginx/sites-available/shipits-forum > /dev/null <<EOF
 # ShipIts Forum Nginx Configuration
+
+# Optional upstream definition for future scaling
+upstream shipits_app {
+    server 127.0.0.1:3555;
+}
+
 server {
     listen 80;
-    server_name ${PUBLIC_IP} your-domain.com _;  # Replace your-domain.com with your actual domain
+    listen [::]:80;
+    server_name \$SERVER_NAME \$PUBLIC_IP;
 
     # Security headers
     add_header X-Frame-Options "SAMEORIGIN" always;
@@ -24,7 +32,7 @@ server {
     gzip on;
     gzip_vary on;
     gzip_min_length 1024;
-    gzip_proxied expired no-cache no-store private must-revalidate auth;
+    gzip_proxied expired no-cache no-store private auth;
     gzip_types
         text/plain
         text/css
@@ -37,71 +45,69 @@ server {
 
     # Main proxy configuration
     location / {
-        proxy_pass http://localhost:3555;
+        proxy_pass http://shipits_app;
         proxy_http_version 1.1;
         proxy_set_header Upgrade \$http_upgrade;
-        proxy_set_header Connection 'upgrade';
+        proxy_set_header Connection "upgrade";
         proxy_set_header Host \$host;
         proxy_set_header X-Real-IP \$remote_addr;
         proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto \$scheme;
         proxy_cache_bypass \$http_upgrade;
-        
-        # Timeout settings
+
         proxy_connect_timeout 60s;
         proxy_send_timeout 60s;
         proxy_read_timeout 60s;
-        
-        # Buffer settings
+
         proxy_buffering on;
         proxy_buffer_size 128k;
         proxy_buffers 4 256k;
         proxy_busy_buffers_size 256k;
     }
 
-    # Static file serving with caching
-    location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)\$ {
-        proxy_pass http://localhost:3555;
-        proxy_cache_valid 200 1d;
+    # Static assets with long cache
+    location ~* \.(js|css|png|jpe?g|gif|ico|svg|woff2?|ttf|eot)\$ {
+        proxy_pass http://shipits_app;
         expires 1d;
         add_header Cache-Control "public, immutable";
         access_log off;
     }
 
-    # Health check endpoint
+    # Health check
     location /health {
-        proxy_pass http://localhost:3555/health;
+        proxy_pass http://shipits_app/health;
         access_log off;
     }
 
-    # File upload size limit
+    # File upload limit
     client_max_body_size 10M;
-    
-    # Logging
+
+    # Logs
     access_log /var/log/nginx/shipits-forum.access.log;
-    error_log /var/log/nginx/shipits-forum.error.log;
+    error_log  /var/log/nginx/shipits-forum.error.log;
 }
 
-# Redirect www to non-www (if using domain)
+# Redirect www → non-www
 server {
     listen 80;
-    server_name www.your-domain.com;  # Replace with your actual domain
-    return 301 \$scheme://your-domain.com\$request_uri;
+    listen [::]:80;
+    server_name www.\$SERVER_NAME;
+    return 301 \$scheme://\$SERVER_NAME\$request_uri;
 }
 EOF
 
-# Backup default nginx config if it exists
+# 3) Backup default site if present
 if [ -f "/etc/nginx/sites-enabled/default" ]; then
-    echo "📦 Backing up default Nginx configuration..."
+    echo "📦 Backing up default site..."
     sudo mv /etc/nginx/sites-enabled/default /etc/nginx/sites-enabled/default.backup
 fi
 
-# Enable the site
+# 4) Enable new site
 echo "🔗 Enabling ShipIts Forum site..."
 sudo ln -sf /etc/nginx/sites-available/shipits-forum /etc/nginx/sites-enabled/
 
-# Test Nginx configuration
-echo "🧪 Testing Nginx configuration..."
+# 5) Test configuration
+echo "🧪 Testing Nginx config..."
 if sudo nginx -t; then
     echo "✅ Nginx configuration is valid"
 else
@@ -109,40 +115,38 @@ else
     exit 1
 fi
 
-# Restart and enable Nginx
+# 6) Restart & enable Nginx service
 echo "🔄 Restarting Nginx..."
 sudo systemctl restart nginx
 sudo systemctl enable nginx
 
-# Check if Nginx is running
 if sudo systemctl is-active --quiet nginx; then
     echo "✅ Nginx is running"
 else
     echo "❌ Nginx failed to start"
-    echo "📋 Checking Nginx status..."
     sudo systemctl status nginx
     exit 1
 fi
 
+# 7) Final output
 echo ""
-echo "✅ Nginx configured successfully!"
-echo ""
-echo "🌐 Your application will be available at:"
-if [ -n "$PUBLIC_IP" ]; then
-    echo "   http://$PUBLIC_IP"
+echo "✅ Setup complete! Access your app at:"
+if [ -n "\$PUBLIC_IP" ]; then
+    echo "   http://\$PUBLIC_IP"
 else
-    echo "   http://YOUR-EC2-PUBLIC-IP"
+    echo "   http://\$SERVER_NAME"
 fi
+
 echo ""
-echo "📋 Nginx management commands:"
-echo "   Test config:    sudo nginx -t"
-echo "   Reload config:  sudo systemctl reload nginx"
-echo "   Restart:        sudo systemctl restart nginx"
-echo "   Status:         sudo systemctl status nginx"
-echo "   View logs:      sudo tail -f /var/log/nginx/shipits-forum.access.log"
-echo "   Error logs:     sudo tail -f /var/log/nginx/shipits-forum.error.log"
+echo "📋 Manage Nginx:"
+echo "   sudo nginx -t"
+echo "   sudo systemctl reload nginx"
+echo "   sudo systemctl restart nginx"
+echo "   sudo systemctl status nginx"
+echo "   sudo tail -f /var/log/nginx/shipits-forum.*.log"
+
 echo ""
-echo "🔒 For SSL/HTTPS setup:"
-echo "   1. Get a domain name and point it to this server"
-echo "   2. Update server_name in /etc/nginx/sites-available/shipits-forum"
-echo "   3. Run: sudo certbot --nginx -d your-domain.com"
+echo "🔒 To add HTTPS later:"
+echo "   # 1) Point your DNS at this server"
+echo "   # 2) Run:"
+echo "   sudo certbot --nginx -d \$SERVER_NAME -d www.\$SERVER_NAME"

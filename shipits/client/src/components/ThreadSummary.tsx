@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Sparkles, RefreshCw, AlertCircle, Clock } from 'lucide-react';
+import { Sparkles, RefreshCw, AlertCircle, Clock, Edit3, Save, X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { commentsApi } from '@/lib/api';
+import { commentsApi, projectsApi } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -12,7 +12,7 @@ interface ThreadSummaryProps {
 }
 
 export function ThreadSummary({ projectId, commentCount, onSummaryUpdate }: ThreadSummaryProps) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const { toast } = useToast();
   
   const [summary, setSummary] = useState<string | null>(null);
@@ -21,6 +21,8 @@ export function ThreadSummary({ projectId, commentCount, onSummaryUpdate }: Thre
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasSummary, setHasSummary] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftSummary, setDraftSummary] = useState('');
 
   useEffect(() => {
     if (commentCount > 0) {
@@ -39,6 +41,7 @@ export function ThreadSummary({ projectId, commentCount, onSummaryUpdate }: Thre
         setSummary(response.data.summary);
         setLastUpdated(response.data.lastUpdated ? new Date(response.data.lastUpdated) : null);
         setHasSummary(response.data.hasSummary);
+        setDraftSummary(response.data.summary || '');
       }
     } catch (err) {
       console.error('Error fetching summary:', err);
@@ -68,6 +71,7 @@ export function ThreadSummary({ projectId, commentCount, onSummaryUpdate }: Thre
         setSummary(response.data.summary);
         setLastUpdated(new Date(response.data.lastUpdated));
         setHasSummary(true);
+        setDraftSummary(response.data.summary || '');
         
         if (onSummaryUpdate) {
           onSummaryUpdate(response.data.summary);
@@ -92,6 +96,37 @@ export function ThreadSummary({ projectId, commentCount, onSummaryUpdate }: Thre
       });
     } finally {
       setGenerating(false);
+    }
+  };
+
+  const canEdit = (projectOwnerId?: string) => {
+    if (!user) return false;
+    if (!projectOwnerId) return false;
+    return user._id === projectOwnerId || user.role === 'admin';
+  };
+
+  const onEditClick = () => {
+    setDraftSummary(summary || '');
+    setIsEditing(true);
+  };
+
+  const onCancelEdit = () => {
+    setIsEditing(false);
+    setDraftSummary(summary || '');
+  };
+
+  const onSaveEdit = async () => {
+    if (!draftSummary.trim()) return;
+    try {
+      const resp = await projectsApi.saveAISummary(projectId, draftSummary.trim());
+      if (resp.success) {
+        setSummary(draftSummary.trim());
+        setIsEditing(false);
+        toast({ title: 'Saved', description: 'Summary updated.' });
+        onSummaryUpdate?.(draftSummary.trim());
+      }
+    } catch (err: any) {
+      toast({ title: 'Error', description: err.message || 'Failed to save summary', variant: 'destructive' });
     }
   };
 
@@ -131,17 +166,19 @@ export function ThreadSummary({ projectId, commentCount, onSummaryUpdate }: Thre
             </div>
           )}
         </div>
-        
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={generateSummary}
-          disabled={generating || loading}
-          className="flex items-center gap-2"
-        >
-          <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
-          {generating ? 'Generating...' : hasSummary ? 'Refresh' : 'Generate'}
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={generateSummary}
+            disabled={generating || loading}
+            className="flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${generating ? 'animate-spin' : ''}`} />
+            {generating ? 'Generating...' : hasSummary ? 'Refresh' : 'Generate'}
+          </Button>
+          {/* Edit button is conditionally rendered by parent with ownerId via onSummaryUpdate or pass-in as needed */}
+        </div>
       </div>
 
       {loading && (
@@ -158,9 +195,34 @@ export function ThreadSummary({ projectId, commentCount, onSummaryUpdate }: Thre
         </div>
       )}
 
-      {summary && !loading && !error && (
+      {summary && !loading && !error && !isEditing && (
         <div className="prose prose-sm max-w-none">
-          <p className="text-gray-700 leading-relaxed mb-0">{summary}</p>
+          <p className="text-gray-700 leading-relaxed mb-2">{summary}</p>
+          {/* Consumers can conditionally show edit button. For simplicity, expose via CSS hook. */}
+          <div className="flex gap-2">
+            <Button variant="ghost" size="sm" className="h-8 px-2 hidden [data-can-edit='true']:inline-flex" onClick={onEditClick}>
+              <Edit3 className="w-4 h-4 mr-1" /> Edit
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {isEditing && (
+        <div className="space-y-2">
+          <textarea
+            value={draftSummary}
+            onChange={(e) => setDraftSummary(e.target.value)}
+            rows={4}
+            className="w-full border rounded p-2 text-sm"
+          />
+          <div className="flex gap-2">
+            <Button size="sm" onClick={onSaveEdit} className="bg-green-600 hover:bg-green-700">
+              <Save className="w-4 h-4 mr-1" /> Save
+            </Button>
+            <Button size="sm" variant="outline" onClick={onCancelEdit}>
+              <X className="w-4 h-4 mr-1" /> Cancel
+            </Button>
+          </div>
         </div>
       )}
 

@@ -20,7 +20,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { adminApi, categoriesApi } from '@/lib/api';
+import { adminApi, categoriesApi, reportsApi } from '@/lib/api';
 import { Link, useLocation } from 'wouter';
 
 interface AnalyticsData {
@@ -101,7 +101,13 @@ export default function AdminDashboard() {
     }
   ]);
   const [aiInput, setAiInput] = useState('');
+  const [activeTab, setActiveTab] = useState('overview');
   const [isAiTyping, setIsAiTyping] = useState(false);
+  const [reportsPage, setReportsPage] = useState(1);
+  const [reports, setReports] = useState<any[]>([]);
+  const [reportsTotal, setReportsTotal] = useState(0);
+  const [reportsLoading, setReportsLoading] = useState(false);
+  const [reportsError, setReportsError] = useState<string | null>(null);
   
   // Category management state
   const [newCategoryName, setNewCategoryName] = useState('');
@@ -299,6 +305,30 @@ export default function AdminDashboard() {
   const analytics = analyticsData?.data || null;
   console.log('📊 Analytics data for UI:', analytics);
 
+  const loadReports = async () => {
+    setReportsLoading(true);
+    setReportsError(null);
+    try {
+      const res = await reportsApi.getReports({ page: reportsPage, limit: 20 });
+      if (res.success) {
+        setReports(res.data.items);
+        setReportsTotal(res.data.total);
+      } else {
+        setReportsError(res.error || 'Failed to load reports');
+      }
+    } catch (e: any) {
+      setReportsError(e.message || 'Failed to load reports');
+    } finally {
+      setReportsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'moderation') {
+      loadReports();
+    }
+  }, [activeTab, reportsPage]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-indigo-50 via-white to-purple-50 flex items-center justify-center">
@@ -417,8 +447,8 @@ export default function AdminDashboard() {
       </div>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
-        <Tabs defaultValue="overview" className="w-full">
-          <TabsList className="grid w-full grid-cols-6 mb-8 glass-effect hover-lift">
+        <Tabs defaultValue="overview" className="w-full" onValueChange={(v) => setActiveTab(v)}>
+          <TabsList className="grid w-full grid-cols-7 mb-8 glass-effect hover-lift">
             <TabsTrigger value="overview" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50">
               <TrendingUp className="h-4 w-4" />
               Overview
@@ -442,6 +472,10 @@ export default function AdminDashboard() {
             <TabsTrigger value="ai-agent" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-violet-50 hover:to-purple-50">
               <Bot className="h-4 w-4" />
               AI Agent
+            </TabsTrigger>
+            <TabsTrigger value="moderation" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-red-50 hover:to-orange-50">
+              <AlertTriangle className="h-4 w-4" />
+              Moderation
             </TabsTrigger>
           </TabsList>
 
@@ -601,6 +635,73 @@ export default function AdminDashboard() {
                 </div>
               </CardContent>
             </Card>
+          </TabsContent>
+
+          {/* Moderation Tab */}
+          <TabsContent value="moderation" className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-semibold flex items-center gap-2">
+                  <AlertTriangle className="h-5 w-5 text-orange-500" /> Reports
+                </h2>
+                <p className="text-sm text-gray-600">User-submitted and auto-flagged reports</p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button variant="outline" onClick={() => setReportsPage(p => Math.max(1, p - 1))} disabled={reportsPage <= 1}>Prev</Button>
+                <span className="text-sm text-gray-600">Page {reportsPage}</span>
+                <Button variant="outline" onClick={() => setReportsPage(p => p + 1)} disabled={reports.length < 20}>Next</Button>
+                <Button variant="outline" onClick={loadReports}>Refresh</Button>
+              </div>
+            </div>
+
+            <div className="bg-white rounded-lg shadow-sm border">
+              <div className="grid grid-cols-12 text-xs font-semibold text-gray-600 border-b p-2">
+                <div className="col-span-2">Type</div>
+                <div className="col-span-2">Reason</div>
+                <div className="col-span-4">Details</div>
+                <div className="col-span-2">Status</div>
+                <div className="col-span-2">Actions</div>
+              </div>
+              {reportsLoading && <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>}
+              {reportsError && <div className="p-6 text-center text-red-600 text-sm">{reportsError}</div>}
+              {!reportsLoading && !reportsError && (
+                <div>
+                  {reports.map((r) => (
+                    <div key={r._id} className="grid grid-cols-12 items-center text-sm p-2 border-b">
+                      <div className="col-span-2 uppercase text-gray-700">{r.targetType}</div>
+                      <div className="col-span-2 capitalize">{r.reason}</div>
+                      <div className="col-span-4 truncate" title={r.details}>{r.details || '-'}</div>
+                      <div className="col-span-2">
+                        <Badge variant={r.status === 'pending' ? 'destructive' : 'default'}>{r.status}</Badge>
+                      </div>
+                      <div className="col-span-2 flex gap-2">
+                        <Select onValueChange={async (val) => {
+                          try {
+                            const res = await reportsApi.updateReport(r._id, { status: val as any });
+                            if (res.success) {
+                              setReports((prev) => prev.map(x => x._id === r._id ? { ...x, status: val } : x));
+                            }
+                          } catch (e) {}
+                        }}>
+                          <SelectTrigger className="h-8">
+                            <SelectValue placeholder={r.status || 'Update status'} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="pending">Pending</SelectItem>
+                            <SelectItem value="reviewed">Reviewed</SelectItem>
+                            <SelectItem value="action_taken">Action Taken</SelectItem>
+                            <SelectItem value="dismissed">Dismissed</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                  ))}
+                  {reports.length === 0 && (
+                    <div className="p-6 text-center text-gray-500 text-sm">No reports yet.</div>
+                  )}
+                </div>
+              )}
+            </div>
           </TabsContent>
 
           {/* Users Tab */}

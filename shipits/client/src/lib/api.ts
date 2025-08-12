@@ -4,11 +4,12 @@
  */
 
 import type { 
-  User, Project, Comment, Event, 
+  User, Project, Comment, Event, Conversation, Message,
   CreateUser, CreateProject, CreateComment, CreateEvent,
   UpdateUser, UpdateProject,
   LoginRequest, RegisterRequest,
-  ApiResponse, PaginatedResponse 
+  ApiResponse, PaginatedResponse,
+  CreateConversation, CreateMessage,
 } from '@shared/schema';
 
 const API_BASE = '/api';
@@ -24,7 +25,7 @@ async function handleResponse<T>(response: Response): Promise<T> {
 
 // Authentication API
 export const authApi = {
-  async register(userData: RegisterRequest): Promise<ApiResponse<{ user: User }>> {
+  async register(userData: RegisterRequest & { captchaToken?: string }): Promise<ApiResponse<{ user: User }>> {
     const response = await fetch(`${API_BASE}/auth/register`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -40,6 +41,34 @@ export const authApi = {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify(credentials),
+    });
+    return handleResponse(response);
+  },
+
+  async resendVerification(email: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/auth/resend-verification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ email }),
+    });
+    return handleResponse(response);
+  },
+
+  async requestPasswordReset(email: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/auth/password-reset/request`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    return handleResponse(response);
+  },
+
+  async confirmPasswordReset(token: string, newPassword: string, confirmPassword: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/auth/password-reset/confirm`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, newPassword, confirmPassword }),
     });
     return handleResponse(response);
   },
@@ -88,6 +117,19 @@ export const projectsApi = {
     });
     return handleResponse(response);
   },
+  async autocomplete(q: string, limit = 8): Promise<ApiResponse<{ projects: Array<Pick<Project, '_id' | 'title' | 'tags'>>; tags: { tag: string; count: number }[]; users: Array<Pick<User, '_id' | 'username' | 'fullName' | 'profileImage'>> }>> {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (limit) params.set('limit', String(limit));
+    const response = await fetch(`${API_BASE}/search/autocomplete?${params}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+  async didYouMean(q: string): Promise<ApiResponse<{ didYouMean?: string; alternates?: string[] }>> {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    const response = await fetch(`${API_BASE}/search/did-you-mean?${params}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
 
   async getFeaturedProjects(): Promise<ApiResponse<{ projects: Project[] }>> {
     const response = await fetch(`${API_BASE}/projects/featured`, {
@@ -98,6 +140,23 @@ export const projectsApi = {
 
   async getTrendingProjects(): Promise<ApiResponse<{ projects: Project[] }>> {
     const response = await fetch(`${API_BASE}/projects/trending`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getLeaderboard(params: { period?: number; limit?: number } = {}): Promise<ApiResponse<{ items: Array<{ _id: string; totalPoints: number; totalActivities: number; activeDays: number; username: string; fullName: string; profileImage?: string }> }>> {
+    const searchParams = new URLSearchParams();
+    if (params.period) searchParams.set('period', String(params.period));
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    const response = await fetch(`${API_BASE}/leaderboard?${searchParams.toString()}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+
+  async getRecommendedProjects(limit: number = 12): Promise<ApiResponse<{ projects: Project[] }>> {
+    const params = new URLSearchParams();
+    if (limit) params.set('limit', String(limit));
+    const response = await fetch(`${API_BASE}/projects/recommended?${params}`, {
       credentials: 'include',
     });
     return handleResponse(response);
@@ -211,6 +270,34 @@ export const projectsApi = {
     });
     return handleResponse(response);
   },
+
+  async suggestTags(id: string): Promise<ApiResponse<{ suggestions: Array<{ tag: string; confidence?: number; reason?: string }>; project?: Project }>> {
+    const response = await fetch(`${API_BASE}/projects/${id}/tags/suggest`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async improveDescription(id: string, params: { intent?: 'shorten' | 'clarify' | 'improve'; maxWords?: number }): Promise<ApiResponse<{ improved: string; suggestions?: string[] }>> {
+    const response = await fetch(`${API_BASE}/projects/${id}/description/improve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(params || {}),
+    });
+    return handleResponse(response);
+  },
+
+  async saveAISummary(id: string, summary: string): Promise<ApiResponse<{ project: Project }>> {
+    const response = await fetch(`${API_BASE}/projects/${id}/summary/save`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ summary }),
+    });
+    return handleResponse(response);
+  },
 };
 
 // File Upload API
@@ -261,7 +348,10 @@ export const commentsApi = {
     type?: 'general' | 'question' | 'improvement' | 'answer';
   } = {}): Promise<ApiResponse<{ comments: Comment[] }>> {
     const searchParams = new URLSearchParams();
-    if (params.parentCommentId) searchParams.set('parentCommentId', params.parentCommentId);
+    // Important: allow empty string to explicitly request top-level comments (parentCommentId = null)
+    if (Object.prototype.hasOwnProperty.call(params, 'parentCommentId')) {
+      searchParams.set('parentCommentId', params.parentCommentId ?? '');
+    }
     if (params.type) searchParams.set('type', params.type);
 
     const response = await fetch(`${API_BASE}/projects/${projectId}/comments?${searchParams}`, {
@@ -400,6 +490,16 @@ export const usersApi = {
     return handleResponse(response);
   },
 
+  async getUserMetrics(id: string): Promise<ApiResponse<{ statistics: any; streaks: any; badges: any[]; totals: { totalLikesReceived: number; totalViews: number } }>> {
+    const response = await fetch(`${API_BASE}/users/${id}/metrics`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+
+  async getUserBadges(id: string): Promise<ApiResponse<{ badges: any[] }>> {
+    const response = await fetch(`${API_BASE}/users/${id}/badges`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+
   async updateUser(id: string, updates: UpdateUser): Promise<ApiResponse<{ user: User }>> {
     const response = await fetch(`${API_BASE}/users/${id}`, {
       method: 'PUT',
@@ -413,6 +513,159 @@ export const usersApi = {
   async getUserSubscriptions(id: string): Promise<ApiResponse<{ projects: Project[] }>> {
     const response = await fetch(`${API_BASE}/users/${id}/subscriptions`, {
       credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+  async searchUsers(q: string, limit = 10): Promise<ApiResponse<{ items: Array<Pick<User, '_id' | 'username' | 'fullName' | 'profileImage'>> }>> {
+    const params = new URLSearchParams();
+    if (q) params.set('q', q);
+    if (limit) params.set('limit', String(limit));
+    const response = await fetch(`${API_BASE}/users/search?${params.toString()}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+  async listUsers(params: { page?: number; limit?: number; search?: string } = {}): Promise<ApiResponse<{ items: Array<Pick<User, '_id' | 'username' | 'fullName' | 'profileImage'>>; pagination: any }>> {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set('page', String(params.page));
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    if (params.search) searchParams.set('search', params.search);
+    const response = await fetch(`${API_BASE}/users?${searchParams.toString()}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+  async followUser(id: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/users/${id}/follow`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+  async unfollowUser(id: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/users/${id}/follow`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+  async getFollowers(id: string): Promise<ApiResponse<{ users: Array<Pick<User, '_id' | 'username' | 'fullName' | 'profileImage'>> }>> {
+    const response = await fetch(`${API_BASE}/users/${id}/followers`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+  async getFollowing(id: string): Promise<ApiResponse<{ users: Array<Pick<User, '_id' | 'username' | 'fullName' | 'profileImage'>> }>> {
+    const response = await fetch(`${API_BASE}/users/${id}/following`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+};
+
+// Feed API
+export const feedApi = {
+  async getPersonalizedFeed(params: { page?: number; limit?: number } = {}): Promise<ApiResponse<{ items: Project[]; total: number }>> {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set('page', String(params.page));
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    const response = await fetch(`${API_BASE}/feed/personalized?${searchParams}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+};
+
+// Chat API
+export const chatApi = {
+  async listConversations(): Promise<ApiResponse<{ conversations: Conversation[] }>> {
+    const response = await fetch(`${API_BASE}/conversations`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+  async getRecentContacts(): Promise<ApiResponse<{ items: Array<Pick<User, '_id' | 'username' | 'fullName' | 'profileImage'>> }>> {
+    const response = await fetch(`${API_BASE}/conversations/recent-contacts`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+  async createConversation(data: CreateConversation): Promise<ApiResponse<{ conversation: Conversation }>> {
+    const response = await fetch(`${API_BASE}/conversations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+  async listMessages(conversationId: string, params: { page?: number; limit?: number } = {}): Promise<ApiResponse<{ messages: Message[]; pagination: any }>> {
+    const searchParams = new URLSearchParams();
+    if (params.page) searchParams.set('page', String(params.page));
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}/messages?${searchParams}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+  async sendMessage(conversationId: string, data: CreateMessage): Promise<ApiResponse<{ message: Message }>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}/messages`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+  stream(conversationId: string, onMessage: (event: MessageEvent) => void): EventSource {
+    const es = new EventSource(`${API_BASE}/conversations/${conversationId}/stream`, { withCredentials: true } as any);
+    es.onmessage = onMessage;
+    return es;
+  },
+};
+
+// Translations API
+export const translationsApi = {
+  async translate(data: {
+    sourceType: 'project' | 'project_update' | 'comment' | 'user' | 'message' | 'event';
+    sourceId: string;
+    field: string;
+    text: string;
+    sourceLanguage?: string;
+    targetLanguage: string;
+    forceRefresh?: boolean;
+  }): Promise<ApiResponse<{ translatedText: string; provider: string; isMachine: boolean }>> {
+    const response = await fetch(`${API_BASE}/translate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  async submitCommunityTranslation(data: {
+    sourceType: 'project' | 'project_update' | 'comment' | 'user' | 'message' | 'event';
+    sourceId: string;
+    field: string;
+    targetLanguage: string;
+    translatedText: string;
+  }): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/translate/community`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+
+  async listTranslations(params: { sourceType: string; sourceId: string; field: string; targetLanguage: string }): Promise<ApiResponse<{ translations: any[] }>> {
+    const search = new URLSearchParams(params as any).toString();
+    const response = await fetch(`${API_BASE}/translate?${search}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+
+  async vote(id: string, vote: 'up' | 'down'): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/translate/${id}/vote`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ vote }),
+    });
+    return handleResponse(response);
+  },
+
+  async translateBatch(items: Array<{ text: string; sourceLanguage?: string; targetLanguage: string }>): Promise<ApiResponse<{ items: string[] }>> {
+    const response = await fetch(`${API_BASE}/translate/batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ items }),
     });
     return handleResponse(response);
   },
@@ -468,6 +721,15 @@ export const tagsApi = {
   async getPopularTags(limit: number = 20): Promise<ApiResponse<{ tags: { tag: string, count: number }[] }>> {
     const response = await fetch(`${API_BASE}/tags/popular?limit=${limit}`, {
       credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+  async suggestForDraft(input: { title: string; description: string; existingTags?: string[] }): Promise<ApiResponse<{ suggestions: Array<{ tag: string; confidence?: number; reason?: string }> }>> {
+    const response = await fetch(`${API_BASE}/ai/tags/suggest`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(input),
     });
     return handleResponse(response);
   },
@@ -660,6 +922,39 @@ export const adminApi = {
   async getDatabaseHealth(): Promise<ApiResponse<any>> {
     const response = await fetch(`${API_BASE}/admin/system/health`, {
       credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+};
+
+// Reports API
+export const reportsApi = {
+  async createReport(payload: { targetType: 'user'|'project'|'comment'; targetId: string; reason: string; details?: string }): Promise<ApiResponse<{ reportId: string }>> {
+    const response = await fetch(`${API_BASE}/reports`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+
+  async getReports(params: { status?: string; targetType?: string; page?: number; limit?: number } = {}): Promise<PaginatedResponse<any>> {
+    const searchParams = new URLSearchParams();
+    if (params.status) searchParams.set('status', params.status);
+    if (params.targetType) searchParams.set('targetType', params.targetType);
+    if (params.page) searchParams.set('page', String(params.page));
+    if (params.limit) searchParams.set('limit', String(params.limit));
+    const response = await fetch(`${API_BASE}/admin/reports?${searchParams}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
+
+  async updateReport(reportId: string, payload: { status: 'pending'|'reviewed'|'action_taken'|'dismissed'; adminNotes?: string }): Promise<ApiResponse<any>> {
+    const response = await fetch(`${API_BASE}/admin/reports/${reportId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
     });
     return handleResponse(response);
   },

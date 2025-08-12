@@ -5,6 +5,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import MarkdownEditor from "@/components/MarkdownEditor";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ImageUpload } from "@/components/ImageUpload";
 import { FileUpload } from "@/components/FileUpload";
@@ -46,6 +47,10 @@ export default function CreateProject() {
   });
   const [newTag, setNewTag] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
+  const [suggestingTags, setSuggestingTags] = useState(false);
+  const [aiTagSuggestions, setAiTagSuggestions] = useState<Array<{ tag: string; confidence?: number; reason?: string }>>([]);
+  const [improvingDesc, setImprovingDesc] = useState(false);
+  const [improvedDesc, setImprovedDesc] = useState<string | null>(null);
 
   const handleImagesUploaded = (images: Array<{
     filename: string;
@@ -162,6 +167,48 @@ export default function CreateProject() {
       title: "Video added",
       description: "YouTube video has been added to your project.",
     });
+  };
+
+  const handleSuggestTags = async () => {
+    if (!projectData.title.trim() || !projectData.description.trim()) {
+      toast({ title: 'Enter title & description first', variant: 'destructive' });
+      return;
+    }
+    setSuggestingTags(true);
+    try {
+      const resp = await tagsApi.suggestForDraft({ title: projectData.title, description: projectData.description, existingTags: projectData.tags });
+      if (resp.success) setAiTagSuggestions(resp.data.suggestions || []);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Failed to suggest tags', variant: 'destructive' });
+    } finally {
+      setSuggestingTags(false);
+    }
+  };
+
+  const addSuggestedTag = (tag: string) => {
+    setProjectData(prev => ({ ...prev, tags: Array.from(new Set([...(prev.tags || []), tag])) }));
+  };
+
+  const handleImproveDescription = async (intent: 'shorten' | 'clarify' | 'improve' = 'improve') => {
+    if (!projectData.description.trim()) {
+      toast({ title: 'Enter a description first', variant: 'destructive' });
+      return;
+    }
+    setImprovingDesc(true);
+    try {
+      const r = await fetch('/api/ai/description/improve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ title: projectData.title, description: projectData.description, intent })
+      });
+      const j = await r.json();
+      if (j.success) setImprovedDesc(j.data.improved);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Failed to improve description', variant: 'destructive' });
+    } finally {
+      setImprovingDesc(false);
+    }
   };
 
   const removeMediaItem = (index: number) => {
@@ -340,16 +387,34 @@ export default function CreateProject() {
                   <label htmlFor="description" className="block text-sm font-medium text-gray-700 mb-2">
                     Project Description *
                   </label>
-                  <Textarea
-                    id="description"
-                    required
+                  <MarkdownEditor
                     value={projectData.description}
-                    onChange={(e) => setProjectData({ ...projectData, description: e.target.value })}
-                    placeholder="Describe your project in detail. What does it do? What problem does it solve? What makes it unique?"
-                    rows={6}
-                    maxLength={2000}
-                    className="w-full"
+                    onChange={(v) => setProjectData({ ...projectData, description: v })}
+                    placeholder="Describe your project in detail. Use headings, lists, code blocks, and images."
+                    withUploads
                   />
+                  <div className="flex gap-2 mt-2">
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleImproveDescription('shorten')} disabled={improvingDesc}>
+                      {improvingDesc ? 'Working…' : 'AI Shorten'}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleImproveDescription('clarify')} disabled={improvingDesc}>
+                      {improvingDesc ? 'Working…' : 'AI Clarify'}
+                    </Button>
+                    <Button type="button" variant="outline" size="sm" onClick={() => handleImproveDescription('improve')} disabled={improvingDesc}>
+                      {improvingDesc ? 'Working…' : 'AI Improve'}
+                    </Button>
+                  </div>
+                  {improvedDesc && (
+                    <div className="p-3 border rounded bg-gray-50 mt-2">
+                      <div className="text-sm font-medium mb-2">AI Suggestion</div>
+                      <div className="prose prose-sm max-w-none">
+                        <MarkdownEditor value={improvedDesc} onChange={setImprovedDesc as any} />
+                      </div>
+                      <div className="mt-2">
+                        <Button size="sm" onClick={() => setProjectData(prev => ({ ...prev, description: improvedDesc || prev.description }))}>Apply</Button>
+                      </div>
+                    </div>
+                  )}
                   <p className="text-xs text-gray-500 mt-1">
                     {projectData.description.length}/2000 characters
                   </p>
@@ -394,10 +459,22 @@ export default function CreateProject() {
                     <Button type="button" onClick={addTag} disabled={!newTag.trim()}>
                       <Plus className="w-4 h-4" />
                     </Button>
+                    <Button type="button" variant="outline" onClick={handleSuggestTags} disabled={suggestingTags}>
+                      {suggestingTags ? 'Suggesting…' : 'AI Suggest Tags'}
+                    </Button>
                   </div>
                   <p className="text-xs text-gray-500 mt-1">
                     Press Enter or click + to add a tag. Use lowercase and hyphens for multi-word tags.
                   </p>
+                  {aiTagSuggestions.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {aiTagSuggestions.map((s, i) => (
+                        <button key={i} type="button" className="px-2 py-1 rounded-full border text-sm hover:bg-gray-100" onClick={() => addSuggestedTag(s.tag)} title={s.reason || ''}>
+                          {s.tag}{typeof s.confidence === 'number' ? ` (${Math.round(s.confidence * 100)}%)` : ''}
+                        </button>
+                      ))}
+                    </div>
+                  )}
 
                   {/* Popular Tags Suggestions */}
                   {popularTags.length > 0 && (

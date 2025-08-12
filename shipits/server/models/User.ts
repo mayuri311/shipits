@@ -46,18 +46,39 @@ export interface IUser extends Document {
   contactInfo: IContactInfo;
   streaks: IStreaks;
   statistics: IUserStatistics;
+  badges: IUserBadge[];
   themePreferences: IThemePreferences;
   subscriptions: Types.ObjectId[];
+  followers: Types.ObjectId[];
+  following: Types.ObjectId[];
   createdAt: Date;
   updatedAt: Date;
   lastLoginAt?: Date;
   isActive: boolean;
   role: 'user' | 'moderator' | 'admin';
+  isFollowersListPublic?: boolean;
+  isFollowingListPublic?: boolean;
+  // Email verification
+  emailVerified?: boolean;
+  emailVerificationToken?: string | null;
+  emailVerificationExpiresAt?: Date | null;
+  emailVerifiedAt?: Date | null;
+  // Password reset
+  passwordResetToken?: string | null;
+  passwordResetExpiresAt?: Date | null;
   
   // Methods
   comparePassword(candidatePassword: string): Promise<boolean>;
   updateStreak(): Promise<void>;
   incrementStatistic(field: keyof IUserStatistics): Promise<void>;
+}
+
+export interface IUserBadge {
+  key: string; // stable unique key, e.g., 'first_project', 'ten_comments'
+  name: string;
+  description: string;
+  icon?: string; // optional icon name
+  awardedAt: Date;
 }
 
 const ContactInfoSchema = new Schema<IContactInfo>({
@@ -217,6 +238,13 @@ const UserSchema = new Schema<IUser>({
     type: UserStatisticsSchema,
     default: {}
   },
+  badges: [{
+    key: { type: String, required: true },
+    name: { type: String, required: true },
+    description: { type: String, required: true },
+    icon: { type: String },
+    awardedAt: { type: Date, default: Date.now }
+  }],
   themePreferences: {
     type: ThemePreferencesSchema,
     default: {}
@@ -224,6 +252,16 @@ const UserSchema = new Schema<IUser>({
   subscriptions: [{
     type: Schema.Types.ObjectId,
     ref: 'Project'
+  }],
+  followers: [{
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
+  }],
+  following: [{
+    type: Schema.Types.ObjectId,
+    ref: 'User',
+    index: true
   }],
   lastLoginAt: {
     type: Date
@@ -237,6 +275,45 @@ const UserSchema = new Schema<IUser>({
     type: String,
     enum: ['user', 'moderator', 'admin'],
     default: 'user',
+    index: true
+  },
+  isFollowersListPublic: {
+    type: Boolean,
+    default: true
+  },
+  isFollowingListPublic: {
+    type: Boolean,
+    default: true
+  },
+  // Email verification fields
+  emailVerified: {
+    type: Boolean,
+    default: false,
+    index: true
+  },
+  emailVerificationToken: {
+    type: String,
+    default: null,
+    index: true
+  },
+  emailVerificationExpiresAt: {
+    type: Date,
+    default: null,
+    index: true
+  },
+  emailVerifiedAt: {
+    type: Date,
+    default: null
+  },
+  // Password reset fields
+  passwordResetToken: {
+    type: String,
+    default: null,
+    index: true
+  },
+  passwordResetExpiresAt: {
+    type: Date,
+    default: null,
     index: true
   }
 }, {

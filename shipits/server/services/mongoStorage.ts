@@ -64,6 +64,13 @@ export interface IMongoStorage {
   recordProjectShare(projectId: string, platform: string, userId?: string): Promise<void>;
   getProjectAnalytics(projectId: string): Promise<any>;
   getTrendingProjects(): Promise<ProjectType[]>;
+  getRecommendedProjects(userId: string, limit?: number): Promise<ProjectType[]>;
+  getPersonalizedFeed(userId: string, params?: { page?: number; limit?: number }): Promise<{ items: ProjectType[]; total: number }>;
+  getContributorLeaderboard(periodDays?: number, limit?: number): Promise<Array<{ userId: Types.ObjectId; username: string; fullName: string; profileImage?: string; totalViews: number; totalComments: number; totalLikes: number; score: number }>>;
+  followUser(followerId: string, targetUserId: string): Promise<boolean>;
+  unfollowUser(followerId: string, targetUserId: string): Promise<boolean>;
+  getFollowers(userId: string): Promise<Array<Pick<UserType, '_id' | 'username' | 'fullName' | 'profileImage'>>>;
+  getFollowing(userId: string): Promise<Array<Pick<UserType, '_id' | 'username' | 'fullName' | 'profileImage'>>>;
   
   // Subscription operations
   subscribeToProject(userId: string, projectId: string): Promise<boolean>;
@@ -73,6 +80,45 @@ export interface IMongoStorage {
 }
 
 export class MongoStorage implements IMongoStorage {
+  // --- Gamification helpers ---
+  private async awardBadgeIfEligible(userId: Types.ObjectId, key: string, name: string, description: string, icon?: string) {
+    try {
+      const user = await User.findById(userId).select('badges');
+      if (!user) return;
+      const already = (user.badges || []).some((b: any) => b.key === key);
+      if (already) return;
+      await User.findByIdAndUpdate(userId, {
+        $push: { badges: { key, name, description, icon, awardedAt: new Date() } }
+      });
+    } catch (e) {
+      console.error('awardBadgeIfEligible error', e);
+    }
+  }
+
+  private async evaluateBadgesForUser(userId: Types.ObjectId) {
+    const user = await User.findById(userId).select('statistics badges createdAt');
+    if (!user) return;
+    const stats: any = user.statistics || {};
+    // First project
+    if ((stats.projectsCreated || 0) >= 1) {
+      await this.awardBadgeIfEligible(userId, 'first_project', 'First Project', 'Created your first project', 'award');
+    }
+    // 10 comments
+    if ((stats.commentsPosted || 0) >= 10) {
+      await this.awardBadgeIfEligible(userId, 'ten_comments', 'Discussion Starter', 'Posted 10 comments', 'message-circle');
+    }
+    // Helpful answers
+    if ((stats.helpfulAnswers || 0) >= 1) {
+      await this.awardBadgeIfEligible(userId, 'first_helpful', 'Helpful', 'Your answer was accepted/helpful', 'thumbs-up');
+    }
+    // Early adopter (account within first 7 days of system?)
+    try {
+      const totalUsers = await User.countDocuments();
+      if (totalUsers <= 1000) {
+        await this.awardBadgeIfEligible(userId, 'early_adopter', 'Early Adopter', 'Joined in the early days', 'rocket');
+      }
+    } catch {}
+  }
   
   // User operations
   async getUser(id: string): Promise<UserType | null> {
@@ -181,8 +227,61 @@ export class MongoStorage implements IMongoStorage {
         query.ownerId = new Types.ObjectId(ownerId);
       }
 
-      if (search) {
-        query.$text = { $search: search };
+      if (search && sortBy === 'relevance') {
+        // Hybrid semantic + text search ranking
+        const baseMatch: any = { status, isDeleted: false };
+        if (tags && tags.length > 0) baseMatch.tags = { $in: tags };
+        if (featured !== undefined) baseMatch.featured = featured;
+        if (ownerId) baseMatch.ownerId = new Types.ObjectId(ownerId);
+
+        // Try text-index candidates first
+        const textQuery: any = { ...baseMatch, $text: { $search: search } };
+        const candidates = await Project.find(textQuery, { score: { $meta: 'textScore' }, title: 1, description: 1, tags: 1, ownerId: 1, analytics: 1, createdAt: 1, lastActivityAt: 1, embedding: 1 })
+          .sort({ score: { $meta: 'textScore' } })
+          .limit(200)
+          .lean();
+
+        // Compute semantic similarity if embeddings are configured
+        let ranked: any[] = candidates;
+        try {
+          const { azureOpenAIService } = await import('../services/azureOpenAI');
+          if (azureOpenAIService.isEmbeddingConfigured()) {
+            const [qvec] = await azureOpenAIService.getEmbeddings(search);
+            if (Array.isArray(qvec) && qvec.length > 0) {
+              const dot = (a: number[], b: number[]) => {
+                const len = Math.min(a.length, b.length);
+                let s = 0;
+                for (let i = 0; i < len; i++) s += a[i] * b[i];
+                return s;
+              };
+              const norm = (a: number[]) => Math.sqrt(a.reduce((s, v) => s + v * v, 0) || 1);
+              const qn = norm(qvec);
+              ranked = candidates.map((d: any) => {
+                const ev = Array.isArray(d.embedding) ? d.embedding as number[] : [];
+                const sim = ev.length > 0 ? dot(qvec, ev) / (qn * norm(ev)) : 0;
+                const textScore = typeof (d as any).score === 'number' ? (d as any).score : 0;
+                const pop = (d.analytics?.views || 0) + (d.analytics?.totalLikes || 0) * 3;
+                const popScore = Math.log10(1 + pop);
+                // Weighted blend; prioritize semantic and text relevance
+                const relevance = 0.6 * sim + 0.3 * (textScore / 10) + 0.1 * popScore;
+                return { d, relevance };
+              }).sort((a, b) => b.relevance - a.relevance).map(x => x.d);
+            }
+          }
+        } catch (e) {
+          console.warn('Semantic re-ranking failed, using text score only');
+        }
+
+        const total = ranked.length;
+        const pageItems = ranked.slice((page - 1) * limit, (page - 1) * limit + limit);
+        const ids = pageItems.map((p: any) => p._id);
+        const projects = await Project.find({ _id: { $in: ids } })
+          .populate('ownerId', 'username fullName profileImage')
+          .lean();
+        // Maintain original order
+        const idToDoc = new Map(projects.map((p: any) => [String(p._id), p]));
+        const ordered = ids.map((id: any) => idToDoc.get(String(id))).filter(Boolean) as any[];
+        return { projects: ordered as any, total };
       }
 
       const sort: any = {};
@@ -229,6 +328,21 @@ export class MongoStorage implements IMongoStorage {
         ...projectData,
         ownerId: new Types.ObjectId(projectData.ownerId)
       });
+
+      // Attempt to compute and store embedding
+      try {
+        const { azureOpenAIService } = await import('../services/azureOpenAI');
+        if (azureOpenAIService.isEmbeddingConfigured()) {
+          const text = `${project.title}\n${project.description}\nTags: ${(project.tags || []).join(', ')}`.slice(0, 12000);
+          const [vec] = await azureOpenAIService.getEmbeddings(text);
+          if (Array.isArray(vec) && vec.length > 0) {
+            (project as any).embedding = vec;
+          }
+        }
+      } catch (e) {
+        console.warn('Embedding generation skipped on createProject');
+      }
+
       await project.save();
       
       // Record activity
@@ -238,6 +352,9 @@ export class MongoStorage implements IMongoStorage {
         project._id
       );
       
+      // Evaluate badges
+      await this.evaluateBadgesForUser(new Types.ObjectId(projectData.ownerId));
+
       // Populate owner info for return
       await project.populate('ownerId', 'username fullName profileImage');
       return project.toObject();
@@ -249,9 +366,33 @@ export class MongoStorage implements IMongoStorage {
 
   async updateProject(id: string, updates: UpdateProject): Promise<ProjectType | null> {
     try {
-      const project = await Project.findByIdAndUpdate(id, updates, { new: true })
-        .populate('ownerId', 'username fullName profileImage');
-      return project ? project.toObject() : null;
+      const project = await Project.findById(id);
+      if (!project) return null;
+
+      const prev = { title: project.title, description: project.description, tags: project.tags } as any;
+      project.set(updates as any);
+
+      const changedTitle = typeof (updates as any).title === 'string' && (updates as any).title !== prev.title;
+      const changedDesc = typeof (updates as any).description === 'string' && (updates as any).description !== prev.description;
+      const changedTags = Array.isArray((updates as any).tags) && JSON.stringify((updates as any).tags) !== JSON.stringify(prev.tags);
+      if (changedTitle || changedDesc || changedTags) {
+        try {
+          const { azureOpenAIService } = await import('../services/azureOpenAI');
+          if (azureOpenAIService.isEmbeddingConfigured()) {
+            const text = `${project.title}\n${project.description}\nTags: ${(project.tags || []).join(', ')}`.slice(0, 12000);
+            const [vec] = await azureOpenAIService.getEmbeddings(text);
+            if (Array.isArray(vec) && vec.length > 0) {
+              (project as any).embedding = vec;
+            }
+          }
+        } catch (e) {
+          console.warn('Embedding generation skipped on updateProject');
+        }
+      }
+
+      await project.save();
+      await project.populate('ownerId', 'username fullName profileImage');
+      return project.toObject();
     } catch (error) {
       console.error('Error updating project:', error);
       return null;
@@ -356,9 +497,10 @@ export class MongoStorage implements IMongoStorage {
       // Record activity for streak calculation
       await UserActivity.recordActivity(
         new Types.ObjectId(updateData.authorId), 
-        'project_updated', 
+        'project_update', 
         new Types.ObjectId(updateData.projectId)
       );
+      await this.evaluateBadgesForUser(new Types.ObjectId(updateData.authorId));
 
       // Return the newly added update
       const newUpdate = project.updates[project.updates.length - 1];
@@ -429,6 +571,7 @@ export class MongoStorage implements IMongoStorage {
         'comment', 
         comment._id
       );
+      await this.evaluateBadgesForUser(new Types.ObjectId(commentData.authorId));
       
       // Populate for return
       await comment.populate('authorId', 'username fullName profileImage');
@@ -720,6 +863,50 @@ export class MongoStorage implements IMongoStorage {
     }
   }
 
+  async getContributorLeaderboard(periodDays: number = 30, limit: number = 10): Promise<Array<{ userId: Types.ObjectId; username: string; fullName: string; profileImage?: string; totalViews: number; totalComments: number; totalLikes: number; score: number }>> {
+    try {
+      const startDate = new Date();
+      startDate.setDate(startDate.getDate() - periodDays);
+      startDate.setHours(0, 0, 0, 0);
+
+      // Aggregate recent views/comments per project
+      const agg = await ProjectAnalytics.aggregate([
+        { $match: { date: { $gte: startDate } } },
+        { $group: { _id: '$projectId', views: { $sum: '$metrics.views' }, comments: { $sum: '$metrics.comments' } } },
+        { $lookup: { from: 'projects', localField: '_id', foreignField: '_id', as: 'project' } },
+        { $unwind: '$project' },
+        { $match: { 'project.status': 'active', 'project.isDeleted': false } },
+        { $group: { _id: '$project.ownerId', totalViews: { $sum: '$views' }, totalComments: { $sum: '$comments' }, projectIds: { $addToSet: '$project._id' } } },
+        { $lookup: { from: 'users', localField: '_id', foreignField: '_id', as: 'user' } },
+        { $unwind: '$user' },
+      ]);
+
+      // Compute likes (current) for each owner's projects
+      const results: Array<{ userId: any; username: string; fullName: string; profileImage?: string; totalViews: number; totalComments: number; totalLikes: number; score: number }> = [];
+      for (const row of agg) {
+        const ownerId = row._id as Types.ObjectId;
+        const projects = await Project.find({ ownerId, isDeleted: false }).select('analytics likes');
+        const totalLikes = projects.reduce((sum: number, p: any) => sum + (p.analytics?.totalLikes || (p.likes?.length || 0)), 0);
+        const score = (row.totalViews || 0) + (row.totalComments || 0) * 5 + totalLikes * 2;
+        results.push({
+          userId: ownerId,
+          username: row.user.username,
+          fullName: row.user.fullName,
+          profileImage: row.user.profileImage,
+          totalViews: row.totalViews || 0,
+          totalComments: row.totalComments || 0,
+          totalLikes,
+          score,
+        });
+      }
+      results.sort((a, b) => b.score - a.score);
+      return results.slice(0, limit);
+    } catch (error) {
+      console.error('Error building contributor leaderboard:', error);
+      return [];
+    }
+  }
+
   // Subscription operations
   async subscribeToProject(userId: string, projectId: string): Promise<boolean> {
     try {
@@ -780,6 +967,203 @@ export class MongoStorage implements IMongoStorage {
     } catch (error) {
       console.error('Error checking subscription status:', error);
       return false;
+    }
+  }
+
+  async getRecommendedProjects(userId: string, limit: number = 12): Promise<ProjectType[]> {
+    try {
+      const user = await User.findById(userId).lean();
+      if (!user) return [];
+
+      const followedUserIds = (user.following || []).map((id: any) => new Types.ObjectId(id));
+
+      const [ownedProjects, likedProjects, subscribedProjects] = await Promise.all([
+        Project.find({ ownerId: user._id, isDeleted: false }).select('tags _id analytics').lean(),
+        Project.find({ likes: user._id, isDeleted: false }).select('tags _id analytics').lean(),
+        Subscription.find({ userId: user._id, isActive: true }).populate('projectId', 'tags analytics').lean() as any,
+      ]);
+
+      const tagCounts: Record<string, number> = {};
+      const addTags = (tags?: string[] | undefined | null, weight: number = 1) => {
+        (tags || []).forEach(t => {
+          const tag = String(t).toLowerCase();
+          tagCounts[tag] = (tagCounts[tag] || 0) + weight;
+        });
+      };
+
+      for (const p of ownedProjects) { addTags(p.tags, 3); }
+      for (const p of likedProjects) { addTags(p.tags, 2); }
+      for (const s of subscribedProjects) { if (s.projectId) { addTags((s.projectId as any).tags, 2); } }
+
+      const topTags = Object.entries(tagCounts)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 5)
+        .map(([tag]) => tag);
+
+      const query: any = {
+        status: 'active',
+        isDeleted: false,
+      };
+
+      if (topTags.length > 0) {
+        query.tags = { $in: topTags };
+      }
+
+      const projects = await Project.find(query)
+        .populate('ownerId', 'username fullName profileImage')
+        .sort({ featured: -1, lastActivityAt: -1, 'analytics.views': -1 })
+        .limit(limit * 2)
+        .lean();
+
+      // Attempt user interest embedding from liked/owned/subscribed
+      let userVec: number[] | null = null;
+      try {
+        const ids: Types.ObjectId[] = [
+          ...ownedProjects.map((p: any) => p._id),
+          ...likedProjects.map((p: any) => p._id),
+          ...subscribedProjects.map((s: any) => s.projectId?._id).filter(Boolean),
+        ];
+        if (ids.length > 0) {
+          const withEmb = await Project.find({ _id: { $in: ids } }).select('embedding').lean();
+          const vecs = withEmb.map((row: any) => row.embedding).filter((v: any) => Array.isArray(v) && v.length > 0) as number[][];
+          if (vecs.length > 0) {
+            const dim = vecs[0].length;
+            const sum = new Array(dim).fill(0);
+            for (const v of vecs) {
+              for (let i = 0; i < dim; i++) sum[i] += v[i] || 0;
+            }
+            userVec = sum.map(x => x / vecs.length);
+          }
+        }
+      } catch {}
+
+      const dot = (a: number[], b: number[]) => {
+        const len = Math.min(a.length, b.length);
+        let s = 0; for (let i = 0; i < len; i++) s += a[i] * b[i]; return s;
+      };
+      const norm = (a: number[]) => Math.sqrt(a.reduce((s, v) => s + v * v, 0) || 1);
+
+      const scored = projects.map((p: any) => {
+        let score = 0;
+        const tags: string[] = p.tags || [];
+        for (const tag of tags) {
+          score += (tagCounts[String(tag).toLowerCase()] || 0);
+        }
+        if (followedUserIds.some(fid => fid.equals(p.ownerId?._id))) {
+          score += 5;
+        }
+        score += Math.min(5, Math.floor(((p.analytics?.views || 0) + (p.analytics?.totalLikes || 0)) / 50));
+        if (userVec && Array.isArray(p.embedding) && p.embedding.length > 0) {
+          const sim = dot(userVec, p.embedding) / (norm(userVec) * norm(p.embedding));
+          score += Math.max(0, sim) * 5; // up to +5 bonus from semantic affinity
+        }
+        return { p, score };
+      })
+      .sort((a, b) => b.score - a.score)
+      .slice(0, limit)
+      .map(({ p }) => p);
+
+      return scored as any;
+    } catch (error) {
+      console.error('Error getting recommended projects:', error);
+      return [];
+    }
+  }
+
+  async getPersonalizedFeed(userId: string, params: { page?: number; limit?: number } = {}): Promise<{ items: ProjectType[]; total: number }> {
+    try {
+      const { page = 1, limit = 20 } = params;
+      const user = await User.findById(userId).select('following').lean();
+      if (!user) return { items: [], total: 0 };
+
+      const followingIds = (user.following || []).map((id: any) => new Types.ObjectId(id));
+      if (followingIds.length === 0) {
+        const items = await this.getTrendingProjects();
+        return { items, total: items.length };
+      }
+
+      const query: any = {
+        ownerId: { $in: followingIds },
+        status: 'active',
+        isDeleted: false,
+      };
+
+      const [items, total] = await Promise.all([
+        Project.find(query)
+          .populate('ownerId', 'username fullName profileImage')
+          .sort({ lastActivityAt: -1, createdAt: -1 })
+          .skip((page - 1) * limit)
+          .limit(limit)
+          .lean(),
+        Project.countDocuments(query)
+      ]);
+
+      return { items, total };
+    } catch (error) {
+      console.error('Error getting personalized feed:', error);
+      return { items: [], total: 0 };
+    }
+  }
+
+  async followUser(followerId: string, targetUserId: string): Promise<boolean> {
+    try {
+      if (followerId === targetUserId) return false;
+      const followerObjectId = new Types.ObjectId(followerId);
+      const targetObjectId = new Types.ObjectId(targetUserId);
+
+      const [u1, u2] = await Promise.all([
+        User.findByIdAndUpdate(followerObjectId, { $addToSet: { following: targetObjectId } }, { new: true }),
+        User.findByIdAndUpdate(targetObjectId, { $addToSet: { followers: followerObjectId } }, { new: true }),
+      ]);
+      return !!(u1 && u2);
+    } catch (error) {
+      console.error('Error following user:', error);
+      return false;
+    }
+  }
+
+  async unfollowUser(followerId: string, targetUserId: string): Promise<boolean> {
+    try {
+      if (followerId === targetUserId) return false;
+      const followerObjectId = new Types.ObjectId(followerId);
+      const targetObjectId = new Types.ObjectId(targetUserId);
+
+      const [u1, u2] = await Promise.all([
+        User.findByIdAndUpdate(followerObjectId, { $pull: { following: targetObjectId } }, { new: true }),
+        User.findByIdAndUpdate(targetObjectId, { $pull: { followers: followerObjectId } }, { new: true }),
+      ]);
+      return !!(u1 && u2);
+    } catch (error) {
+      console.error('Error unfollowing user:', error);
+      return false;
+    }
+  }
+
+  async getFollowers(userId: string): Promise<Array<Pick<UserType, '_id' | 'username' | 'fullName' | 'profileImage'>>> {
+    try {
+      const user = await User.findById(userId).select('followers isFollowersListPublic').lean();
+      if (!user) return [] as any;
+      const ids = (user.followers || []) as any[];
+      if (!user.isFollowersListPublic) return [] as any;
+      const followers = await User.find({ _id: { $in: ids } }).select('_id username fullName profileImage').lean();
+      return followers as any;
+    } catch (error) {
+      console.error('Error getting followers:', error);
+      return [] as any;
+    }
+  }
+
+  async getFollowing(userId: string): Promise<Array<Pick<UserType, '_id' | 'username' | 'fullName' | 'profileImage'>>> {
+    try {
+      const user = await User.findById(userId).select('following isFollowingListPublic').lean();
+      if (!user) return [] as any;
+      const ids = (user.following || []) as any[];
+      if (!user.isFollowingListPublic) return [] as any;
+      const following = await User.find({ _id: { $in: ids } }).select('_id username fullName profileImage').lean();
+      return following as any;
+    } catch (error) {
+      console.error('Error getting following:', error);
+      return [] as any;
     }
   }
 }

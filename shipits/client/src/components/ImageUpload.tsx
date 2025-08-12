@@ -8,7 +8,8 @@ import { compressImage, formatFileSize } from "@/lib/imageCompression";
 interface UploadedImage {
   filename: string;
   originalName: string;
-  data: string; // Base64 data URL
+  data?: string; // Base64 data URL (optional when server returns URL)
+  url?: string;  // URL served from /uploads
   size: number;
   mimetype: string;
 }
@@ -116,20 +117,21 @@ export function ImageUpload({ onImagesUploaded, maxImages = 10, existingImages =
         });
 
         try {
-          const response = await uploadApi.uploadProcessedImages(compressedImages);
+          const response = await uploadApi.uploadProcessedImages(compressedImages as any);
           
-          if (response.success) {
-            const newImages = [...images, ...response.data.files];
+          if ((response as any).success) {
+            const files = ((response as any).data?.files || []) as UploadedImage[];
+            const newImages = [...images, ...files];
             setImages(newImages);
             onImagesUploaded(newImages);
             
-            const compressionRatio = totalOriginalSize / totalCompressedSize;
+            const compressionRatio = totalCompressedSize > 0 ? (totalOriginalSize / totalCompressedSize) : 1;
             toast({
               title: "Images uploaded successfully",
-              description: `${response.data.files.length} image(s) uploaded (compressed from ${formatFileSize(totalOriginalSize)} to ${formatFileSize(totalCompressedSize)}).`,
+              description: `${files.length} image(s) uploaded (compressed from ${formatFileSize(totalOriginalSize)} to ${formatFileSize(totalCompressedSize)}).`,
             });
           } else {
-            throw new Error(response.error || 'Upload failed');
+            throw new Error(((response as any).error) || 'Upload failed');
           }
         } catch (uploadError) {
           console.error('Server upload error:', uploadError);
@@ -246,7 +248,7 @@ export function ImageUpload({ onImagesUploaded, maxImages = 10, existingImages =
           {images.map((image, index) => (
             <div key={image.filename} className="relative group">
               <img
-                src={image.data}
+                src={image.data || image.url}
                 alt={image.originalName}
                 className="w-full h-24 object-cover rounded-lg border"
               />

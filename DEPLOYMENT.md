@@ -137,7 +137,7 @@ sudo snap install --classic certbot
 sudo ln -s /snap/bin/certbot /usr/bin/certbot
 
 # Get SSL certificate (replace your-domain.com with your actual domain)
-sudo certbot --nginx -d your-domain.com
+sudo certbot --nginx -d shipits.velroi.com
 
 # Test auto-renewal
 sudo certbot renew --dry-run

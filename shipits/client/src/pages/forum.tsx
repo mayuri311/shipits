@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { Search, Filter, ChevronDown, Heart, MessageSquare, Share2, Bookmark, User, Plus, LogOut, Trash2, Crown, BarChart3, Menu, X } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
-import { projectsApi, categoriesApi, tagsApi } from "@/lib/api";
+import { projectsApi, categoriesApi, tagsApi, feedApi } from "@/lib/api";
 import type { Project } from "@shared/schema";
 import { AuthModal } from "@/components/AuthModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
@@ -15,6 +15,8 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/components/YouTubeEmbed";
+import TranslatedText from "@/components/TranslatedText";
+import TranslatedMarkdown from "@/components/TranslatedMarkdown";
 
 const sortOptions = ["Featured", "Most Recent", "Most Viewed", "Trending"];
 
@@ -24,6 +26,7 @@ export default function Forum() {
   const queryClient = useQueryClient();
   const isMobile = useIsMobile();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [showFollowingFeed, setShowFollowingFeed] = useState(false);
   
   // Format date helper
   const formatDate = (dateString: string | Date) => {
@@ -35,6 +38,10 @@ export default function Forum() {
     });
   };
   const [searchTerm, setSearchTerm] = useState("");
+  const [suggestion, setSuggestion] = useState<string | null>(null);
+  const [alternates, setAlternates] = useState<string[]>([]);
+  const [acOpen, setAcOpen] = useState(false);
+  const [acItems, setAcItems] = useState<{ projects: any[]; tags: any[]; users: any[] }>({ projects: [], tags: [], users: [] });
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState("Most Recent");
@@ -73,7 +80,7 @@ export default function Forum() {
     search: searchTerm || undefined,
     tags: allFilterTags.length > 0 ? allFilterTags : undefined,
     featured: sortBy === "Featured" ? true : undefined,
-    sortBy: getSortField(sortBy),
+    sortBy: searchTerm ? 'relevance' : getSortField(sortBy),
     sortOrder: getSortOrder(sortBy),
     limit: 20,
   };
@@ -121,6 +128,52 @@ export default function Forum() {
 
   const projects = projectsData?.success ? projectsData.data.items : [];
   const initialLoading = isLoading && !projectsData;
+
+  // Trending and Recommended
+  const { data: trendingData } = useQuery({
+    queryKey: ['projects', 'trending'],
+    queryFn: () => projectsApi.getTrendingProjects(),
+  });
+  const { data: recommendedData } = useQuery({
+    queryKey: ['projects', 'recommended'],
+    queryFn: () => projectsApi.getRecommendedProjects(8),
+    enabled: !!isAuthenticated,
+  });
+  // Autocomplete and did-you-mean effects
+  useEffect(() => {
+    const id = setTimeout(async () => {
+      try {
+        if (!searchTerm) {
+          setAcItems({ projects: [], tags: [], users: [] });
+          setSuggestion(null);
+          setAlternates([]);
+          setAcOpen(false);
+          return;
+        }
+        const [ac, dym] = await Promise.all([
+          projectsApi.autocomplete(searchTerm, 8),
+          projectsApi.didYouMean(searchTerm),
+        ]);
+        if (ac.success && ac.data) setAcItems(ac.data);
+        if (dym.success && dym.data) {
+          setSuggestion(dym.data.didYouMean || null);
+          setAlternates(dym.data.alternates || []);
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 200);
+    return () => clearTimeout(id);
+  }, [searchTerm]);
+
+
+  // Personalized feed for followed users
+  const { data: feedData, isFetching: isFeedFetching } = useQuery({
+    queryKey: ['feed', { page: 1, limit: 20 }],
+    queryFn: () => feedApi.getPersonalizedFeed({ page: 1, limit: 20 }),
+    enabled: !!isAuthenticated && showFollowingFeed,
+  });
+  const displayProjects = (showFollowingFeed && feedData?.success) ? (feedData.data.items as Project[]) : projects;
 
   const deleteProjectMutation = useMutation({
     mutationFn: (projectId: string) => projectsApi.adminDeleteProject(projectId),
@@ -252,6 +305,12 @@ export default function Forum() {
                   
                   {/* Desktop: Show all options */}
                   <div className="hidden lg:flex items-center gap-2">
+                    <Link href="/chat">
+                      <Button variant="outline" size="sm">
+                        <MessageSquare className="w-4 h-4 mr-2" />
+                        Chat
+                      </Button>
+                    </Link>
                     <Link href="/create-project">
                       <Button className="bg-maroon hover:bg-maroon/90 text-white" size="sm">
                         <Plus className="w-4 h-4 mr-2" />
@@ -286,6 +345,11 @@ export default function Forum() {
 
                   {/* Mobile/Tablet: Compact view with expandable menu */}
                   <div className="flex lg:hidden items-center gap-1">
+                    <Link href="/chat">
+                      <Button variant="outline" size="sm" className="text-xs px-2">
+                        <MessageSquare className="w-3 h-3" />
+                      </Button>
+                    </Link>
                     <Link href="/create-project">
                       <Button className="bg-maroon hover:bg-maroon/90 text-white text-xs px-2 py-1" size="sm">
                         <Plus className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-1" />
@@ -418,13 +482,76 @@ export default function Forum() {
                   type="text"
                   placeholder="Search projects and tags..."
                   value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
+                  onChange={(e) => {
+                    const v = e.target.value;
+                    setSearchTerm(v);
+                    setAcOpen(!!v);
+                  }}
                   className="pl-10"
                 />
+                {acOpen && searchTerm && (
+                  <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow">
+                    <div className="p-2 text-xs text-gray-500">Suggestions</div>
+                    <div className="max-h-72 overflow-auto">
+                      {acItems.tags?.length > 0 && (
+                        <div className="p-2">
+                          <div className="text-xs font-medium text-gray-600 mb-1">Tags</div>
+                          <div className="flex flex-wrap gap-2">
+                            {acItems.tags.slice(0,8).map((t:any) => (
+                              <button key={t.tag} className="text-sm px-2 py-1 bg-gray-100 rounded hover:bg-gray-200" onClick={() => { handleTagClick(t.tag); setAcOpen(false); }}>
+                                #{t.tag}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {acItems.projects?.length > 0 && (
+                        <div className="p-2">
+                          <div className="text-xs font-medium text-gray-600 mb-1">Projects</div>
+                          <ul>
+                            {acItems.projects.slice(0,5).map((p:any) => (
+                              <li key={p._id} className="py-1">
+                                <a href={`/project/${p._id}`} className="text-sm text-blue-600 hover:underline" onClick={() => setAcOpen(false)}>{p.title}</a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {acItems.users?.length > 0 && (
+                        <div className="p-2">
+                          <div className="text-xs font-medium text-gray-600 mb-1">Users</div>
+                          <ul>
+                            {acItems.users.slice(0,5).map((u:any) => (
+                              <li key={u._id} className="py-1 text-sm text-gray-700">{u.fullName || u.username}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {acItems.tags?.length === 0 && acItems.projects?.length === 0 && acItems.users?.length === 0 && (
+                        <div className="p-2 text-sm text-gray-500">No suggestions</div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
+              {suggestion && (
+                <div className="text-sm text-gray-600">Did you mean <button className="text-blue-600 hover:underline" onClick={() => setSearchTerm(suggestion!)}>{suggestion}</button>? {alternates.length>0 && alternates.map((a,idx)=> (
+                  <button key={idx} className="ml-2 text-blue-600 hover:underline" onClick={() => setSearchTerm(a)}>{a}</button>
+                ))}
+                </div>
+              )}
 
               {/* Filters Row */}
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
+                {isAuthenticated && (
+                  <Button
+                    variant={showFollowingFeed ? 'default' : 'outline'}
+                    onClick={() => setShowFollowingFeed(!showFollowingFeed)}
+                    className={showFollowingFeed ? 'bg-maroon hover:bg-maroon/90 text-white' : ''}
+                  >
+                    {showFollowingFeed ? 'Following Feed' : 'All Projects'}
+                  </Button>
+                )}
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                   <SelectTrigger className="w-full sm:w-48">
                     <SelectValue />
@@ -511,13 +638,43 @@ export default function Forum() {
             </div>
           </div>
 
+          {isAuthenticated && recommendedData?.success && recommendedData.data.projects.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm p-4 mb-8">
+              <h2 className="text-lg font-semibold mb-3">Recommended for you</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {recommendedData.data.projects.map((p: Project) => (
+                  <Link key={p._id} href={`/forum/project/${p._id}`} className="border rounded-lg p-3 hover:shadow">
+                    <div className="font-medium mb-1">{p.title}</div>
+                    <div className="text-xs text-gray-500 mb-2">by {typeof p.ownerId === 'object' ? (p.ownerId.fullName || p.ownerId.username) : ''}</div>
+                    <div className="text-xs text-gray-600">{p.tags?.slice(0,3).map(t=>`#${t}`).join(' ')}</div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {trendingData?.success && trendingData.data.projects.length > 0 && (
+            <div className="bg-white rounded-lg shadow-sm p-4 mb-8">
+              <h2 className="text-lg font-semibold mb-3">Trending projects</h2>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {trendingData.data.projects.map((p: Project) => (
+                  <Link key={p._id} href={`/forum/project/${p._id}`} className="border rounded-lg p-3 hover:shadow">
+                    <div className="font-medium mb-1">{p.title}</div>
+                    <div className="text-xs text-gray-500 mb-2">by {typeof p.ownerId === 'object' ? (p.ownerId.fullName || p.ownerId.username) : ''}</div>
+                    <div className="text-xs text-gray-600">{p.tags?.slice(0,3).map(t=>`#${t}`).join(' ')}</div>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
+
           {error && (
             <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">
               <p className="text-red-800">Error: {(error as Error).message}</p>
             </div>
           )}
 
-          {(isFetching) ? (
+          {(isFetching || (showFollowingFeed && isFeedFetching)) ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
                 <div key={i} className="bg-white rounded-lg shadow-sm animate-pulse">
@@ -530,7 +687,7 @@ export default function Forum() {
                 </div>
               ))}
             </div>
-          ) : projects.length === 0 ? (
+          ) : displayProjects.length === 0 ? (
             <div className="text-center py-12">
               <p className="text-gray-500 text-lg mb-4">No projects found</p>
               <p className="text-gray-400">Try adjusting your search criteria or create a new project!</p>
@@ -546,7 +703,7 @@ export default function Forum() {
             <section aria-label="Projects gallery">
               <h2 className="sr-only">Browse Projects</h2>
               <ul className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6" role="list">
-                {projects.map((project) => {
+                {displayProjects.map((project) => {
                   // Find the first video media, if any
                   const firstVideo = project.media?.find((media) => media.type === 'video');
                   return (
@@ -596,11 +753,22 @@ export default function Forum() {
                       </div>
                       <div className="p-6">
                         <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
-                          {project.title}
+                          <TranslatedText
+                            sourceType="project"
+                            sourceId={project._id}
+                            field="title"
+                            text={project.title}
+                            as="span"
+                          />
                         </h3>
-                        <p className="text-gray-600 text-xs sm:text-sm mb-4 line-clamp-3">
-                          {project.description}
-                        </p>
+                        <div className="text-gray-600 text-xs sm:text-sm mb-4 line-clamp-3">
+                          <TranslatedMarkdown
+                            sourceType="project"
+                            sourceId={project._id}
+                            field="description"
+                            text={project.description}
+                          />
+                        </div>
                         <div className="flex flex-col sm:flex-row items-center justify-between text-xs sm:text-sm text-gray-500 mb-3 gap-1 sm:gap-0">
                           <span>By {project.ownerId?.fullName || project.ownerId?.username}</span>
                           <span>{formatDate(project.createdAt)}</span>

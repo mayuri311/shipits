@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface INotification extends Document {
   _id: Types.ObjectId;
   recipientId: Types.ObjectId;
-  type: 'project_update' | 'comment_reply' | 'mention' | 'project_status_change' | 'new_subscriber' | 'event_registration' | 'event_reminder' | 'project_like' | 'comment_like' | 'new_comment';
+  type: 'project_update' | 'comment_reply' | 'mention' | 'project_status_change' | 'new_subscriber' | 'event_registration' | 'event_reminder' | 'project_like' | 'comment_like' | 'new_comment' | 'new_message';
   relatedProject?: Types.ObjectId;
   relatedComment?: Types.ObjectId;
   relatedUser?: Types.ObjectId;
@@ -54,7 +54,8 @@ const NotificationSchema = new Schema<INotification>({
       'event_reminder',
       'project_like',
       'comment_like',
-      'new_comment'
+       'new_comment',
+       'new_message'
     ],
     required: true,
     index: true
@@ -309,7 +310,7 @@ NotificationSchema.statics.createNewCommentNotification = async function(
       relatedProject: projectId,
       relatedUser: commentAuthorId,
       title: 'New Comment',
-      message: `Someone commented on your project: ${project.title}`
+      message: `Someone commented on your post: ${project.title}`
     });
   }
 };

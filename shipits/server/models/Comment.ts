@@ -112,7 +112,7 @@ const CommentSchema = new Schema<IComment>({
     type: String,
     required: true,
     trim: true,
-    maxlength: 2000
+    maxlength: 50000
   },
   type: {
     type: String,
@@ -275,6 +275,29 @@ CommentSchema.methods.markAsAnswer = async function(questionId: Types.ObjectId):
     this.authorId,
     { $inc: { 'statistics.helpfulAnswers': 1 } }
   );
+  // Award "Helpful" badge if not already present
+  try {
+    const User = mongoose.model('User');
+    const userDoc: any = await User.findById(this.authorId).select('badges statistics');
+    if (userDoc) {
+      const hasBadge = (userDoc.badges || []).some((b: any) => b.key === 'first_helpful');
+      if (!hasBadge && (userDoc.statistics?.helpfulAnswers || 0) + 1 >= 1) {
+        await User.findByIdAndUpdate(this.authorId, {
+          $push: {
+            badges: {
+              key: 'first_helpful',
+              name: 'Helpful',
+              description: 'Your answer was accepted/helpful',
+              icon: 'thumbs-up',
+              awardedAt: new Date()
+            }
+          }
+        });
+      }
+    }
+  } catch (e) {
+    // ignore badge award errors
+  }
 };
 
 CommentSchema.methods.addMention = async function(userId: Types.ObjectId): Promise<void> {

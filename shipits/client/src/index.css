@@ -2,6 +2,16 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Ensure markdown content renders nicely */
+.prose pre code {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.prose img {
+  border-radius: 0.5rem;
+}
+
 :root {
   --background: hsl(0, 0%, 100%);
   --foreground: hsl(20, 14.3%, 4.1%);

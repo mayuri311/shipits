@@ -1,0 +1,15 @@
+# Navigate to the shipits directory
+cd shipits
+
+# Install any new dependencies (if package.json changed)
+npm install
+
+# Rebuild the server with your session fix
+npm run build
+
+# Stop and restart PM2 with the new build
+pm2 restart shipits-forum
+
+# Check if it started successfully
+pm2 status
+pm2 logs shipits-forum --lines 10

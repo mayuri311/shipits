@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { Link, useParams } from "wouter";
 import { 
   Play, Heart, Share2, Bookmark, ArrowLeft, MessageSquare, 
-  Calendar, Users, Eye, Send, Trash2, Edit3, Save, X, Download, File as FileIcon
+  Calendar, Users, Eye, Send, Trash2, Edit3, Save, X, Download, File as FileIcon, Flag
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,14 +10,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { projectsApi, commentsApi } from "@/lib/api";
+import { projectsApi, commentsApi, reportsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CommentThread } from "@/components/CommentThread";
 import { ThreadSummary } from "@/components/ThreadSummary";
 import { ShareButton } from "@/components/ShareButton";
 import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/components/YouTubeEmbed";
+import MarkdownRenderer from "@/components/MarkdownRenderer";
+import TranslatedMarkdown from "@/components/TranslatedMarkdown";
+import MarkdownEditor from "@/components/MarkdownEditor";
 import { useIsMobile } from "@/hooks/use-mobile";
+import { useQueryClient } from "@tanstack/react-query";
 import type { Project, Comment } from "@shared/schema";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from "@/components/ui/carousel";
 
@@ -39,6 +43,7 @@ export default function ProjectDetail() {
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
+  const queryClient = useQueryClient();
   
   const [project, setProject] = useState<Project | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
@@ -76,6 +81,19 @@ export default function ProjectDetail() {
   const [savingProject, setSavingProject] = useState(false);
   const [deleteProjectConfirm, setDeleteProjectConfirm] = useState(false);
   const [deletingProject, setDeletingProject] = useState(false);
+  // AI helpers state
+  const [suggestingTags, setSuggestingTags] = useState(false);
+  const [aiTagSuggestions, setAiTagSuggestions] = useState<Array<{ tag: string; confidence?: number; reason?: string }>>([]);
+  const [improvingDesc, setImprovingDesc] = useState(false);
+  const [improvedDesc, setImprovedDesc] = useState<string | null>(null);
+  // Top-of-page AI summary edit/regenerate
+  const [editingAISummary, setEditingAISummary] = useState(false);
+  const [draftAISummary, setDraftAISummary] = useState('');
+  const [savingAISummary, setSavingAISummary] = useState(false);
+  const [regeneratingAISummary, setRegeneratingAISummary] = useState(false);
+  const [showProjectReport, setShowProjectReport] = useState(false);
+  const [projectReportReason, setProjectReportReason] = useState<'spam' | 'abuse' | 'harassment' | 'hate' | 'sexual' | 'self-harm' | 'copyright' | 'other'>('spam');
+  const [projectReportDetails, setProjectReportDetails] = useState('');
 
   // Get filtered valid updates
   const validUpdates = updates.filter(isValidUpdate);
@@ -191,6 +209,25 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleReportProject = async () => {
+    if (!isAuthenticated || !project) {
+      toast({ title: 'Authentication Required', description: 'Please log in to report.', variant: 'destructive' });
+      return;
+    }
+    try {
+      const res = await reportsApi.createReport({ targetType: 'project', targetId: project._id, reason: projectReportReason, details: projectReportDetails || undefined });
+      if (res.success) {
+        toast({ title: 'Reported', description: 'Thanks. Moderators will review this project.' });
+        setShowProjectReport(false);
+        setProjectReportDetails('');
+      } else {
+        throw new Error(res.error || 'Failed to report');
+      }
+    } catch (e: any) {
+      toast({ title: 'Report Failed', description: e.message || 'Please try again later.', variant: 'destructive' });
+    }
+  };
+
   // Comment edit handler
   const handleEditComment = (commentId: string, newContent: string) => {
     setComments(prevComments => 
@@ -200,6 +237,10 @@ export default function ProjectDetail() {
           : comment
       )
     );
+    // Invalidate user metrics to refresh progress
+    if (user?._id) {
+      queryClient.invalidateQueries({ queryKey: ['userMetrics', user._id] });
+    }
   };
 
   useEffect(() => {
@@ -242,7 +283,8 @@ export default function ProjectDetail() {
 
   const fetchComments = async () => {
     try {
-      const response = await commentsApi.getProjectComments(id!);
+      // Fetch top-level comments only; replies will be fetched per parent below
+      const response = await commentsApi.getProjectComments(id!, { parentCommentId: '' });
       if (response.success) {
         const topLevelComments = response.data.comments;
 
@@ -322,6 +364,11 @@ export default function ProjectDetail() {
           title: "Comment Posted",
           description: "Your comment has been posted successfully.",
         });
+
+        // Invalidate user metrics so profile progress updates
+        if (user?._id) {
+          queryClient.invalidateQueries({ queryKey: ['userMetrics', user._id] });
+        }
       }
     } catch (err) {
       console.error('Error posting comment:', err);
@@ -362,7 +409,10 @@ export default function ProjectDetail() {
 
   const confirmDeleteComment = async () => {
     try {
-      const response = await commentsApi.adminDeleteComment(deleteConfirm.commentId);
+      // Capture authorId before deleting for potential targeted invalidation
+      const deleted = comments.find(c => c._id === deleteConfirm.commentId);
+      // Use general delete endpoint; server allows authors and admins appropriately
+      const response = await commentsApi.deleteComment(deleteConfirm.commentId);
       
       if (response.success) {
         setComments(comments.filter(c => c._id !== deleteConfirm.commentId));
@@ -375,6 +425,14 @@ export default function ProjectDetail() {
             totalComments: Math.max((prev.analytics?.totalComments || 0) - 1, 0)
           }
         } : null);
+        
+        // Invalidate metrics for current user and (if available) comment author
+        if (user?._id) {
+          queryClient.invalidateQueries({ queryKey: ['userMetrics', user._id] });
+        }
+        if (deleted?.authorId && (deleted.authorId as any)._id) {
+          queryClient.invalidateQueries({ queryKey: ['userMetrics', (deleted.authorId as any)._id.toString()] });
+        }
         
         toast({
           title: "Comment Deleted",
@@ -585,6 +643,11 @@ export default function ProjectDetail() {
           title: "Reply Posted",
           description: "Your reply has been posted successfully.",
         });
+
+        // Invalidate user metrics so profile progress updates
+        if (user?._id) {
+          queryClient.invalidateQueries({ queryKey: ['userMetrics', user._id] });
+        }
       }
     } catch (err) {
       console.error('Error posting reply:', err);
@@ -672,6 +735,11 @@ export default function ProjectDetail() {
                 variant="outline"
                 size="sm"
               />
+              {isAuthenticated && project && project.ownerId._id !== user?._id && (
+                <Button variant="outline" size="sm" onClick={() => setShowProjectReport(true)} title="Report project">
+                  <Flag className="w-4 h-4 mr-1" /> Report
+                </Button>
+              )}
             </div>
           </div>
         </div>
@@ -921,6 +989,111 @@ export default function ProjectDetail() {
                   </div>
                 </section>
 
+                {/* AI Project Summary (top of page) */}
+                {project.aiSummary && (
+                  <div className="mb-4 bg-gradient-to-r from-amber-50 to-rose-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-gray-900">AI Project Summary</div>
+                      {isAuthenticated && (project.ownerId._id === user?._id || user?.role === 'admin') && (
+                        <div className="flex gap-2">
+                          {!editingAISummary && (
+                            <>
+                              <Button size="sm" variant="outline" onClick={() => { setEditingAISummary(true); setDraftAISummary(project.aiSummary || ''); }}>
+                                <Edit3 className="w-4 h-4 mr-1" /> Edit
+                              </Button>
+                              <Button size="sm" variant="outline" onClick={async () => {
+                                try {
+                                  setRegeneratingAISummary(true);
+                                  const gen = await commentsApi.generateThreadSummary(project._id);
+                                  if (gen.success) {
+                                    const newSummary = gen.data.summary;
+                                    setDraftAISummary(newSummary);
+                                    // Save to project
+                                    setSavingAISummary(true);
+                                    const saved = await projectsApi.saveAISummary(project._id, newSummary);
+                                    if (saved.success) {
+                                      setProject(prev => prev ? { ...prev, aiSummary: newSummary, aiSummaryUpdatedAt: new Date() as any } : prev);
+                                      toast({ title: 'Regenerated', description: 'AI summary updated.' });
+                                    }
+                                  }
+                                } catch (e: any) {
+                                  toast({ title: 'Error', description: e.message || 'Failed to regenerate', variant: 'destructive' });
+                                } finally {
+                                  setSavingAISummary(false);
+                                  setRegeneratingAISummary(false);
+                                }
+                              }} disabled={regeneratingAISummary}>
+                                {regeneratingAISummary ? 'Regenerating…' : 'Regenerate'}
+                              </Button>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    {!editingAISummary ? (
+                      <>
+                        <div className="text-sm text-gray-700 mt-2">{project.aiSummary}</div>
+                        <div className="text-xs text-gray-500 mt-2">Updated {project.aiSummaryUpdatedAt ? formatDate(project.aiSummaryUpdatedAt) : 'recently'}</div>
+                      </>
+                    ) : (
+                      <div className="mt-2 space-y-2">
+                        <Textarea value={draftAISummary} onChange={(e) => setDraftAISummary(e.target.value)} rows={4} />
+                        <div className="flex gap-2">
+                          <Button size="sm" onClick={async () => {
+                            if (!draftAISummary.trim()) return;
+                            try {
+                              setSavingAISummary(true);
+                              const saved = await projectsApi.saveAISummary(project._id, draftAISummary.trim());
+                              if (saved.success) {
+                                setProject(prev => prev ? { ...prev, aiSummary: draftAISummary.trim(), aiSummaryUpdatedAt: new Date() as any } : prev);
+                                setEditingAISummary(false);
+                                toast({ title: 'Saved', description: 'AI summary updated.' });
+                              }
+                            } catch (e: any) {
+                              toast({ title: 'Error', description: e.message || 'Failed to save', variant: 'destructive' });
+                            } finally {
+                              setSavingAISummary(false);
+                            }
+                          }} disabled={savingAISummary}>
+                            {savingAISummary ? 'Saving…' : 'Save'}
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => setEditingAISummary(false)}>Cancel</Button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                {(!project.aiSummary && isAuthenticated && (project.ownerId._id === user?._id || user?.role === 'admin')) && (
+                  <div className="mb-4 bg-gradient-to-r from-amber-50 to-rose-50 border border-amber-200 rounded-lg p-4">
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm font-semibold text-gray-900">AI Project Summary</div>
+                    </div>
+                    <p className="text-sm text-gray-700 mt-2">No summary yet. Generate one based on the project and its discussion.</p>
+                    <div className="mt-2">
+                      <Button size="sm" variant="outline" onClick={async () => {
+                        try {
+                          setRegeneratingAISummary(true);
+                          const gen = await commentsApi.generateThreadSummary(project._id);
+                          if (gen.success) {
+                            const newSummary = gen.data.summary;
+                            const saved = await projectsApi.saveAISummary(project._id, newSummary);
+                            if (saved.success) {
+                              setProject(prev => prev ? { ...prev, aiSummary: newSummary, aiSummaryUpdatedAt: new Date() as any } : prev);
+                              toast({ title: 'Generated', description: 'AI summary created.' });
+                            }
+                          }
+                        } catch (e: any) {
+                          toast({ title: 'Error', description: e.message || 'Failed to generate', variant: 'destructive' });
+                        } finally {
+                          setRegeneratingAISummary(false);
+                        }
+                      }} disabled={regeneratingAISummary}>
+                        {regeneratingAISummary ? 'Generating…' : 'Generate Summary'}
+                      </Button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Project Tabs */}
                 <Tabs defaultValue="overview" className="w-full">
                   <TabsList className="grid w-full grid-cols-3">
@@ -936,12 +1109,34 @@ export default function ProjectDetail() {
                       <h3 className="text-lg font-semibold mb-4">About This Project</h3>
                       {editingProject ? (
                         <div className="space-y-4">
-                          <Textarea
+                          <MarkdownEditor
                             value={projectEditForm.description}
-                            onChange={(e) => setProjectEditForm(prev => ({ ...prev, description: e.target.value }))}
-                            placeholder="Project description"
-                            className="min-h-[120px]"
+                            onChange={(v) => setProjectEditForm(prev => ({ ...prev, description: v }))}
+                            placeholder="Project description (Markdown supported)"
+                            withUploads
                           />
+                          <div className="flex gap-2 items-center">
+                            <Button type="button" size="sm" variant="outline" onClick={() => handleImproveDescription('shorten')} disabled={improvingDesc}>
+                              {improvingDesc ? 'Working…' : 'AI Shorten'}
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => handleImproveDescription('clarify')} disabled={improvingDesc}>
+                              {improvingDesc ? 'Working…' : 'AI Clarify'}
+                            </Button>
+                            <Button type="button" size="sm" variant="outline" onClick={() => handleImproveDescription('improve')} disabled={improvingDesc}>
+                              {improvingDesc ? 'Working…' : 'AI Improve'}
+                            </Button>
+                          </div>
+                          {improvedDesc && (
+                            <div className="p-3 border rounded bg-gray-50">
+                              <div className="text-sm font-medium mb-2">AI Suggestion</div>
+                              <div className="prose prose-sm max-w-none">
+                                <MarkdownRenderer content={improvedDesc} />
+                              </div>
+                              <div className="mt-2">
+                                <Button size="sm" onClick={() => setProjectEditForm(prev => ({ ...prev, description: improvedDesc }))}>Apply</Button>
+                              </div>
+                            </div>
+                          )}
                           <div>
                             <label className="block text-sm font-medium mb-2">Tags (comma-separated)</label>
                             <Input
@@ -952,12 +1147,29 @@ export default function ProjectDetail() {
                               }))}
                               placeholder="e.g., web development, react, javascript"
                             />
+                            <div className="flex gap-2 mt-2">
+                              <Button type="button" size="sm" variant="outline" onClick={handleSuggestTags} disabled={suggestingTags}>
+                                {suggestingTags ? 'Suggesting…' : 'AI Suggest Tags'}
+                              </Button>
+                            </div>
+                            {aiTagSuggestions.length > 0 && (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {aiTagSuggestions.map((s, i) => (
+                                  <button key={i} type="button" className="px-2 py-1 rounded-full border text-sm hover:bg-gray-100" onClick={() => addSuggestedTag(s.tag)} title={s.reason || ''}>
+                                    {s.tag}{typeof s.confidence === 'number' ? ` (${Math.round(s.confidence * 100)}%)` : ''}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
                           </div>
                         </div>
                       ) : (
-                        <p className="text-gray-700 leading-relaxed whitespace-pre-line">
-                          {project.description}
-                        </p>
+                        <TranslatedMarkdown
+                          sourceType="project"
+                          sourceId={project._id}
+                          field="description"
+                          text={project.description}
+                        />
                       )}
                       
                       {project.tags && project.tags.length > 0 && (
@@ -1135,26 +1347,20 @@ export default function ProjectDetail() {
                           </div>
                           
                           <div>
-                            <label htmlFor="update-content" className="block text-sm font-medium text-gray-700 mb-2">
-                              Update Details <span className="text-red-500">*</span>
-                            </label>
-                            <Textarea
-                              id="update-content"
-                              value={newUpdate.content}
-                              onChange={(e) => setNewUpdate({ ...newUpdate, content: e.target.value })}
-                              placeholder="Describe the new features, improvements, changes, or progress you've made..."
-                              rows={6}
-                              maxLength={5000}
-                              className="w-full resize-none"
-                              required
-                            />
+                          <label htmlFor="update-content" className="block text-sm font-medium text-gray-700 mb-2">
+                            Update Details <span className="text-red-500">*</span>
+                          </label>
+                          <MarkdownEditor
+                            value={newUpdate.content}
+                            onChange={(v) => setNewUpdate({ ...newUpdate, content: v })}
+                            placeholder="Describe the new features, improvements, changes, or progress you've made..."
+                            withUploads
+                          />
                             <div className="flex justify-between items-center mt-1">
                               <div className="text-xs text-gray-500">
                                 Share details that will help others understand your progress
                               </div>
-                              <div className="text-xs text-gray-400">
-                                {newUpdate.content.length}/5000
-                              </div>
+                            <div className="text-xs text-gray-400">{newUpdate.content.length}/5000</div>
                             </div>
                           </div>
                           
@@ -1211,11 +1417,12 @@ export default function ProjectDetail() {
                                 )}
                               </div>
                             </div>
-                            <div className="prose max-w-none">
-                              <p className="text-gray-700 whitespace-pre-line leading-relaxed">
-                                {update.content}
-                              </p>
-                            </div>
+                            <TranslatedMarkdown
+                              sourceType="project_update"
+                              sourceId={update._id}
+                              field="content"
+                              text={update.content}
+                            />
                             {update.media && update.media.length > 0 && (
                               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                                 {update.media.map((media: any, mediaIndex: number) => (
@@ -1257,20 +1464,21 @@ export default function ProjectDetail() {
                   
                   <TabsContent value="comments" className="mt-6">
                     {/* Thread Summary */}
-                    <ThreadSummary 
-                      projectId={id!}
-                      commentCount={comments.length}
-                    />
+                    <div data-can-edit={(isAuthenticated && project && (project.ownerId._id === user?._id || user?.role === 'admin')) ? 'true' : 'false'}>
+                      <ThreadSummary 
+                        projectId={id!}
+                        commentCount={comments.length}
+                      />
+                    </div>
 
                     {/* Comment Form */}
                     {isAuthenticated ? (
                       <form onSubmit={handleSubmitComment} className="mb-6">
-                        <Textarea
-                          placeholder="Share your thoughts about this project..."
+                        <MarkdownEditor
                           value={newComment}
-                          onChange={(e) => setNewComment(e.target.value)}
-                          className="mb-3"
-                          rows={3}
+                          onChange={setNewComment}
+                          placeholder="Share your thoughts... Use Markdown, code blocks, images, and emoji."
+                          withUploads
                         />
                         <div className="flex justify-between items-center">
                           <p className="text-sm text-gray-500">
@@ -1392,6 +1600,33 @@ export default function ProjectDetail() {
           </div>
         </div>
       </div>
+      {showProjectReport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-lg shadow-lg w-full max-w-md p-4 space-y-3">
+            <div className="text-lg font-semibold">Report Project</div>
+            <div className="text-sm text-gray-600">Select a reason and optionally add details.</div>
+            <div>
+              <select className="w-full border rounded px-2 py-2" value={projectReportReason} onChange={(e) => setProjectReportReason(e.target.value as any)}>
+                <option value="spam">Spam</option>
+                <option value="abuse">Abuse</option>
+                <option value="harassment">Harassment</option>
+                <option value="hate">Hate</option>
+                <option value="sexual">Sexual</option>
+                <option value="self-harm">Self-harm</option>
+                <option value="copyright">Copyright</option>
+                <option value="other">Other</option>
+              </select>
+            </div>
+            <div>
+              <Textarea placeholder="Additional details (optional)" value={projectReportDetails} onChange={(e) => setProjectReportDetails(e.target.value)} />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button variant="outline" onClick={() => setShowProjectReport(false)}>Cancel</Button>
+              <Button onClick={handleReportProject} className="bg-orange-600 hover:bg-orange-700">Submit Report</Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Project Deletion Confirmation Dialog */}
       <ConfirmDialog
@@ -1409,9 +1644,7 @@ export default function ProjectDetail() {
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}
         onClose={() => setDeleteConfirm({ isOpen: false, commentId: "", commentContent: "" })}
-        onConfirm={() => {
-          handleDeleteComment(comments.find(c => c._id === deleteConfirm.commentId)!);
-        }}
+        onConfirm={confirmDeleteComment}
         title="Delete Comment"
         description={`Are you sure you want to delete this comment? This action cannot be undone.`}
         confirmText="Delete Comment"

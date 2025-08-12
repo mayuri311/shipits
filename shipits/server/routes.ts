@@ -10,18 +10,53 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Types } from "mongoose";
 import mongoose from "mongoose";
+// Simple in-memory rate limiter to avoid external deps in server build
+type RateRecord = { count: number; resetAt: number };
+const rateBuckets: Map<string, RateRecord> = new Map();
+function createRateLimiter(max: number, windowMs: number) {
+  return (req: any, res: any, next: any) => {
+    try {
+      const key = `${req.ip || req.connection?.remoteAddress || 'unknown'}:${req.path}`;
+      const now = Date.now();
+      const rec = rateBuckets.get(key);
+      if (!rec || rec.resetAt <= now) {
+        rateBuckets.set(key, { count: 1, resetAt: now + windowMs });
+        return next();
+      }
+      if (rec.count >= max) {
+        const retryAfterSec = Math.max(1, Math.ceil((rec.resetAt - now) / 1000));
+        res.setHeader('Retry-After', String(retryAfterSec));
+        return res.status(429).json({ success: false, error: 'Too many requests. Please try again later.' });
+      }
+      rec.count += 1;
+      return next();
+    } catch (e) {
+      return next();
+    }
+  };
+}
 import { 
   loginSchema, registerSchema, createProjectSchema, createCommentSchema, 
   createEventSchema, updateUserSchema, updateProjectSchema, contactSchema,
+  createReportSchema, updateReportStatusSchema,
+  translateRequestSchema, communityTranslationSchema,
   type ApiResponse, type PaginatedResponse 
 } from "@shared/schema";
 import { 
-  User, Project, Comment, Event, UserActivity, Contact, Notification, getDatabaseStats
+  User, Project, Comment, Event, UserActivity, Contact, Notification, Report, getDatabaseStats,
+  Translation
 } from "./models/index";
+import { nanoid } from 'nanoid';
+import { sendEmailViaSES, buildVerificationEmailHtml, buildCommentNotificationEmailHtml, buildPasswordResetEmailHtml } from './services/sesEmail';
+import { Conversation } from './models/Conversation';
+import { Message } from './models/Message';
 
 // Get __dirname equivalent for ES modules
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Utility: safe regex escape for autocomplete endpoints
+const escapeRegex = (str: string): string => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
 // Session configuration
 declare module 'express-session' {
@@ -176,10 +211,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   }));
 
+  // Rate limiters
+  const registerLimiter = createRateLimiter(20, 60 * 60 * 1000);
+  const postLimiter = createRateLimiter(30, 60 * 1000);
+
   // Authentication Routes
-  app.post('/api/auth/register', validateBody(registerSchema), async (req, res) => {
+  app.post('/api/auth/register', registerLimiter, validateBody(registerSchema), async (req, res) => {
     try {
-      const { email, username, password, fullName } = req.body;
+      const { email, username, password, fullName, captchaToken } = req.body;
+      // Optional hCaptcha verification if configured
+      if (captchaToken && process.env.HCAPTCHA_SECRET) {
+        try {
+          const verifyResp = await fetch('https://hcaptcha.com/siteverify', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: new URLSearchParams({
+              secret: process.env.HCAPTCHA_SECRET,
+              response: captchaToken,
+            }),
+          });
+          const verifyJson = await verifyResp.json();
+          if (!verifyJson.success) {
+            return res.status(400).json({ success: false, error: 'CAPTCHA verification failed' });
+          }
+        } catch (e) {
+          console.warn('CAPTCHA verify error:', e);
+        }
+      }
       
       // Validate required fields
       if (!email || !username || !password || !fullName) {
@@ -208,19 +266,43 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Create user
       const user = await mongoStorage.createUser(req.body);
-      
-      // Set up session
-      req.session.userId = user._id.toString();
-      req.session.user = user;
 
-      // Return success response without password
-      const userResponse = { ...user };
+      // Issue email verification token
+      try {
+        const token = nanoid(48);
+        const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24); // 24h
+        await User.findByIdAndUpdate(String(user._id), {
+          emailVerificationToken: token,
+          emailVerificationExpiresAt: expiresAt,
+          emailVerified: false
+        });
+
+        const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+        const verifyUrl = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
+        const html = buildVerificationEmailHtml({
+          fullName: fullName || username,
+          username,
+          email,
+          verifyUrl,
+        });
+        await sendEmailViaSES({
+          to: email,
+          subject: 'Verify your email for ShipIts',
+          html,
+          text: `Welcome to ShipIts. Verify your email: ${verifyUrl}`,
+        });
+      } catch (e: any) {
+        console.error('Failed to send verification email:', e);
+      }
+      
+      // Return success response without password (no session until verified)
+      const userResponse = { ...user } as any;
       delete userResponse.password;
 
       res.status(201).json({ 
         success: true, 
         data: { user: userResponse },
-        message: 'User registered successfully' 
+        message: 'Registration successful. Please verify your email before logging in.' 
       });
     } catch (error) {
       console.error('Registration error:', error);
@@ -260,6 +342,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
           success: false, 
           error: 'Invalid email or password' 
         });
+      }
+
+      // Enforce email verification for non-admins
+      if (!user.emailVerified && user.role !== 'admin') {
+        // Re-issue token if missing/expired
+        try {
+          const freshToken = nanoid(48);
+          const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+          await User.findByIdAndUpdate(String(user._id), {
+            emailVerificationToken: freshToken,
+            emailVerificationExpiresAt: expiresAt,
+          });
+          const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+          const verifyUrl = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(freshToken)}`;
+          const html = buildVerificationEmailHtml({
+            fullName: user.fullName || user.username,
+            username: user.username,
+            email: user.email,
+            verifyUrl,
+          });
+          await sendEmailViaSES({
+            to: user.email,
+            subject: 'Verify your email for ShipIts',
+            html,
+            text: `Verify your email: ${verifyUrl}`,
+          });
+        } catch (e: any) {
+          console.error('Failed to send verification email on login:', e);
+        }
+        return res.status(403).json({ success: false, error: 'Email not verified. We’ve sent you a verification link.' });
       }
 
       req.session.userId = user._id.toString();
@@ -307,11 +419,124 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Email verification endpoint
+  app.get('/api/auth/verify', async (req, res) => {
+    try {
+      const token = String(req.query.token || '');
+      if (!token || token.length < 10) {
+        return res.status(400).json({ success: false, error: 'Invalid or missing verification token' });
+      }
+      const user = await User.findOne({ emailVerificationToken: token });
+      if (!user) {
+        return res.status(400).json({ success: false, error: 'Invalid verification token' });
+      }
+      if (user.emailVerified) {
+        // Redirect to success landing page
+        const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+        return res.redirect(302, `${baseUrl}/verify-success`);
+      }
+      if (user.emailVerificationExpiresAt && user.emailVerificationExpiresAt.getTime() < Date.now()) {
+        return res.status(400).json({ success: false, error: 'Verification token expired. Please request a new one.' });
+      }
+      user.emailVerified = true;
+      user.emailVerifiedAt = new Date();
+      user.emailVerificationToken = null as any;
+      user.emailVerificationExpiresAt = null as any;
+      await user.save();
+      // Redirect to success landing page
+      const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      return res.redirect(302, `${baseUrl}/verify-success`);
+    } catch (e: any) {
+      console.error('Email verify error:', e);
+      return res.status(500).json({ success: false, error: 'Verification failed' });
+    }
+  });
+
+  // Resend verification
+  app.post('/api/auth/resend-verification', async (req, res) => {
+    try {
+      const email = String(req.body?.email || '').toLowerCase();
+      if (!email) return res.status(400).json({ success: false, error: 'Email required' });
+      const user = await User.findOne({ email });
+      if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+      if (user.emailVerified) return res.json({ success: true, message: 'Email already verified' });
+      const token = nanoid(48);
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+      await User.findByIdAndUpdate(user._id, {
+        emailVerificationToken: token,
+        emailVerificationExpiresAt: expiresAt,
+      });
+      const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const verifyUrl = `${baseUrl}/api/auth/verify?token=${encodeURIComponent(token)}`;
+      const html = buildVerificationEmailHtml({
+        fullName: user.fullName || user.username,
+        username: user.username,
+        email: user.email,
+        verifyUrl,
+      });
+      await sendEmailViaSES({ to: user.email, subject: 'Verify your email for ShipIts', html, text: `Verify your email: ${verifyUrl}` });
+      return res.json({ success: true, message: 'Verification email sent' });
+    } catch (e: any) {
+      console.error('Resend verify error:', e);
+      return res.status(500).json({ success: false, error: 'Failed to resend verification' });
+    }
+  });
+
+  // Password reset: request
+  app.post('/api/auth/password-reset/request', async (req, res) => {
+    try {
+      const email = String(req.body?.email || '').toLowerCase();
+      if (!email) return res.status(400).json({ success: false, error: 'Email required' });
+      const user = await User.findOne({ email });
+      // Always return success to avoid email enumeration
+      if (!user) return res.json({ success: true, message: 'If the email exists, a reset link has been sent' });
+      if (!user.emailVerified) return res.json({ success: true, message: 'If the email exists, a reset link has been sent' });
+      const token = nanoid(48);
+      const expiresAt = new Date(Date.now() + 1000 * 60 * 30); // 30m
+      user.passwordResetToken = token as any;
+      user.passwordResetExpiresAt = expiresAt as any;
+      await user.save();
+      const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+      const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
+      const html = buildPasswordResetEmailHtml({ fullNameOrUsername: user.fullName || user.username, resetUrl });
+      await sendEmailViaSES({ to: email, subject: 'Reset your ShipIts password', html, text: `Reset your password: ${resetUrl}` });
+      return res.json({ success: true, message: 'If the email exists, a reset link has been sent' });
+    } catch (e) {
+      console.error('Password reset request error:', e);
+      return res.status(500).json({ success: false, error: 'Failed to process request' });
+    }
+  });
+
+  // Password reset: confirm
+  app.post('/api/auth/password-reset/confirm', async (req, res) => {
+    try {
+      const { token, newPassword, confirmPassword } = req.body || {};
+      if (!token || typeof token !== 'string' || token.length < 10) return res.status(400).json({ success: false, error: 'Invalid token' });
+      if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 6) return res.status(400).json({ success: false, error: 'Invalid password' });
+      if (newPassword !== confirmPassword) return res.status(400).json({ success: false, error: 'Passwords do not match' });
+      const user = await User.findOne({ passwordResetToken: token });
+      if (!user) return res.status(400).json({ success: false, error: 'Invalid or expired token' });
+      if (!user.passwordResetExpiresAt || user.passwordResetExpiresAt.getTime() < Date.now()) {
+        return res.status(400).json({ success: false, error: 'Invalid or expired token' });
+      }
+      user.password = newPassword; // will be hashed by pre-save hook
+      user.passwordResetToken = null as any;
+      user.passwordResetExpiresAt = null as any;
+      await user.save();
+      return res.json({ success: true, message: 'Password reset successful. Please log in.' });
+    } catch (e) {
+      console.error('Password reset confirm error:', e);
+      return res.status(500).json({ success: false, error: 'Failed to reset password' });
+    }
+  });
+
   // Project Routes
   app.get('/api/projects', async (req, res) => {
     try {
-      const filters = {
-        status: req.query.status as string,
+      const statusParam = (req.query.status as string) || undefined;
+      const statusNorm: 'active' | 'inactive' | 'archived' | 'completed' | undefined = (statusParam === 'active' || statusParam === 'inactive' || statusParam === 'archived' || statusParam === 'completed') ? statusParam : undefined;
+      const filters: import('@shared/schema').ProjectFilters = {
+        status: statusNorm,
         tags: req.query.tags ? (req.query.tags as string).split(',') : undefined,
         featured: req.query.featured === 'true' ? true : undefined,
         ownerId: req.query.ownerId as string,
@@ -321,11 +546,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const pagination = {
         page: parseInt(req.query.page as string) || 1,
         limit: parseInt(req.query.limit as string) || 20,
-        sortBy: req.query.sortBy as string || 'createdAt',
+        sortBy: (req.query.sortBy as string) || 'createdAt',
         sortOrder: (req.query.sortOrder as 'asc' | 'desc') || 'desc'
       };
 
-      const result = await mongoStorage.getProjects(filters, pagination);
+      const result = await mongoStorage.getProjects(filters as any, pagination);
       const totalPages = Math.ceil(result.total / pagination.limit);
 
       const response: PaginatedResponse = {
@@ -346,6 +571,101 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Autocomplete endpoint: projects, tags, users
+  app.get('/api/search/autocomplete', async (req, res) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      const limit = Math.min(parseInt((req.query.limit as string) || '10', 10), 50);
+
+      // use top-level escapeRegex
+      const safe = escapeRegex(q);
+
+      const [projectMatches, tagMatches, userMatches] = await Promise.all([
+        q ? Project.find({
+          isDeleted: false,
+          status: 'active',
+          $or: [
+            { title: { $regex: safe, $options: 'i' } },
+            { description: { $regex: safe, $options: 'i' } },
+            { tags: { $regex: safe, $options: 'i' } },
+          ]
+        }).select('title tags ownerId').limit(limit).populate('ownerId', 'username fullName').lean() : [],
+        // popular tags starting with query
+        q ? Project.aggregate([
+          { $match: { status: 'active', isDeleted: false, tags: { $exists: true, $ne: [] } } },
+          { $unwind: '$tags' },
+          { $match: { tags: { $regex: '^' + safe, $options: 'i' } } },
+          { $group: { _id: '$tags', count: { $sum: 1 } } },
+          { $sort: { count: -1 } },
+          { $limit: limit },
+          { $project: { tag: '$_id', count: 1, _id: 0 } }
+        ]) : [],
+        q ? User.find({ $or: [
+          { username: { $regex: safe, $options: 'i' } },
+          { fullName: { $regex: safe, $options: 'i' } }
+        ] }).select('username fullName profileImage').limit(limit).lean() : []
+      ]);
+
+      res.json({ success: true, data: { projects: projectMatches, tags: tagMatches, users: userMatches } });
+    } catch (error) {
+      console.error('Autocomplete error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get suggestions' });
+    }
+  });
+
+  // Did you mean endpoint
+  app.get('/api/search/did-you-mean', async (req, res) => {
+    try {
+      const q = String(req.query.q || '').trim();
+      if (!q) return res.json({ success: true, data: {} });
+      const { azureOpenAIService } = await import('./services/azureOpenAI');
+      const suggestion = await azureOpenAIService.suggestQueryCorrections(q);
+      res.json({ success: true, data: suggestion });
+    } catch (error) {
+      console.error('Did you mean error:', error);
+      res.status(200).json({ success: true, data: {} });
+    }
+  });
+
+  // Admin: backfill/reindex embeddings for projects
+  app.post('/api/admin/embeddings/reindex', requireAdmin, async (req, res) => {
+    try {
+      const force = Boolean((req.body && (req.body as any).force) || false);
+      const max = Math.min(parseInt((req.body && (req.body as any).limit) || '200', 10), 2000);
+      const { azureOpenAIService } = await import('./services/azureOpenAI');
+      if (!azureOpenAIService.isEmbeddingConfigured()) {
+        return res.status(400).json({ success: false, error: 'Embeddings not configured' });
+      }
+      const query: any = { isDeleted: false };
+      if (!force) query.embedding = { $exists: false };
+      const candidates = await Project.find(query).select('title description tags').limit(max).lean();
+      if (candidates.length === 0) {
+        return res.json({ success: true, data: { updated: 0 } });
+      }
+      const batchSize = 64;
+      let updated = 0;
+      for (let i = 0; i < candidates.length; i += batchSize) {
+        const batch = candidates.slice(i, i + batchSize);
+        const texts = batch.map((p: any) => `${p.title}\n${p.description}\nTags: ${(p.tags || []).join(', ')}`.slice(0, 12000));
+        const vectors = await azureOpenAIService.getEmbeddings(texts);
+        const ops = batch.map((p: any, idx: number) => ({
+          updateOne: {
+            filter: { _id: p._id },
+            update: { $set: { embedding: vectors[idx] || [] } }
+          }
+        }));
+        if (ops.length > 0) {
+          const r = await (Project as any).bulkWrite(ops);
+          updated += r.modifiedCount || 0;
+        }
+      }
+      res.json({ success: true, data: { updated } });
+    } catch (error) {
+      console.error('Embeddings reindex error:', error);
+      res.status(500).json({ success: false, error: 'Failed to reindex embeddings' });
+    }
+  });
+
   app.get('/api/projects/featured', async (req, res) => {
     try {
       const projects = await mongoStorage.getFeaturedProjects();
@@ -353,6 +673,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Get featured projects error:', error);
       res.status(500).json({ success: false, error: 'Failed to get featured projects' });
+    }
+  });
+
+  // Trending projects
+  app.get('/api/projects/trending', async (req, res) => {
+    try {
+      const projects = await mongoStorage.getTrendingProjects();
+      res.json({ success: true, data: { projects } });
+    } catch (error) {
+      console.error('Get trending projects error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get trending projects' });
     }
   });
 
@@ -371,6 +702,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ success: false, error: 'Failed to get project' });
     }
   });
+  // Reports - public create
+  app.post('/api/reports', requireAuth, validateBody(createReportSchema), async (req, res) => {
+    try {
+      const { targetType, targetId, reason, details } = req.body;
+      // Validate target exists
+      const objId = new Types.ObjectId(targetId);
+      let exists = false;
+      if (targetType === 'comment') exists = !!(await Comment.findById(objId));
+      if (targetType === 'project') exists = !!(await Project.findById(objId));
+      if (targetType === 'user') exists = !!(await User.findById(objId));
+      if (!exists) {
+        return res.status(404).json({ success: false, error: 'Target not found' });
+      }
+
+      const report = await Report.create({
+        reporterId: new Types.ObjectId(req.session.userId),
+        targetType,
+        targetId: objId,
+        reason,
+        details,
+        status: 'pending',
+        autoFlagged: false,
+      });
+      res.status(201).json({ success: true, data: { reportId: report._id } });
+    } catch (error) {
+      console.error('Create report error:', error);
+      res.status(500).json({ success: false, error: 'Failed to submit report' });
+    }
+  });
+
+  // Admin - list reports
+  app.get('/api/admin/reports', requireAdmin, async (req, res) => {
+    try {
+      const page = parseInt((req.query.page as string) || '1');
+      const limit = parseInt((req.query.limit as string) || '20');
+      const status = req.query.status as string | undefined;
+      const targetType = req.query.targetType as string | undefined;
+      const filter: any = {};
+      if (status) filter.status = status;
+      if (targetType) filter.targetType = targetType;
+
+      const total = await Report.countDocuments(filter);
+      const items = await Report.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean();
+
+      res.json({ success: true, data: { items, total, page, limit, totalPages: Math.ceil(total / limit) } });
+    } catch (error) {
+      console.error('List reports error:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch reports' });
+    }
+  });
+
+  // Admin - update report status
+  app.put('/api/admin/reports/:id', requireAdmin, validateBody(updateReportStatusSchema), async (req, res) => {
+    try {
+      const { status, adminNotes } = req.body;
+      const report = await Report.findByIdAndUpdate(
+        req.params.id,
+        { status, adminNotes, processedBy: new Types.ObjectId(req.currentUser._id) },
+        { new: true }
+      );
+      if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
+      res.json({ success: true, data: { report } });
+    } catch (error) {
+      console.error('Update report error:', error);
+      res.status(500).json({ success: false, error: 'Failed to update report' });
+    }
+  });
 
   app.post('/api/projects', requireAuth, validateBody(createProjectSchema), async (req, res) => {
     try {
@@ -380,6 +782,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const project = await mongoStorage.createProject(projectData);
+      // Heuristic spam check on title/description (after creation so we can reference ID)
+      const text = `${project.title}\n${project.description}`.toLowerCase();
+      const hasSuspicious = /free money|buy now|viagra|crypto|casino|adult|porn/i.test(text) || /https?:\/\/\S{30,}/i.test(text);
+      if (hasSuspicious) {
+        try {
+          await Report.create({
+            reporterId: new Types.ObjectId(req.session.userId as string),
+            targetType: 'project',
+            targetId: new Types.ObjectId(project._id),
+            reason: 'spam',
+            details: 'Auto-flagged by heuristic spam filter on project submit',
+            autoFlagged: true,
+            status: 'pending',
+            scores: { heuristicScore: 0.85 },
+          });
+        } catch (e) {
+          console.warn('Failed to auto-flag project:', e);
+        }
+      }
       res.status(201).json({ 
         success: true, 
         data: { project },
@@ -816,6 +1237,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI: Suggest Tags for a Project
+  app.post('/api/projects/:id/tags/suggest', requireAuth, async (req, res) => {
+    try {
+      let azureOpenAIService;
+      try {
+        const azureModule = await import('./services/azureOpenAI');
+        azureOpenAIService = azureModule.azureOpenAIService;
+      } catch (importError) {
+        console.error('Failed to import Azure OpenAI modules:', importError);
+        return res.status(503).json({ success: false, error: 'AI service unavailable' });
+      }
+
+      if (!azureOpenAIService || !azureOpenAIService.isConfigured()) {
+        return res.status(503).json({ success: false, error: 'AI service not configured' });
+      }
+
+      const currentUser = await mongoStorage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const project = await mongoStorage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      // Allow project owners and admins to request suggestions
+      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+
+      const comments = await mongoStorage.getProjectComments(req.params.id);
+      const updates = await mongoStorage.getProjectUpdates(req.params.id);
+
+      const suggestions = await azureOpenAIService.suggestTags({
+        title: project.title,
+        description: project.description,
+        existingTags: project.tags || [],
+        updates: updates.map((u: any) => ({ title: u.title, content: u.content, createdAt: new Date(u.createdAt) })),
+        comments: comments.map((c: any) => ({ content: c.content, createdAt: new Date(c.createdAt) })),
+        maxTags: 10,
+      });
+
+      // Persist suggestions to project for convenience (non-authoritative)
+      const updated = await mongoStorage.updateProject(req.params.id, {
+        aiSuggestedTags: suggestions.map(s => s.tag)
+      });
+
+      res.json({ success: true, data: { suggestions, project: updated } });
+    } catch (error) {
+      console.error('Suggest tags error:', error);
+      res.status(500).json({ success: false, error: 'Failed to suggest tags' });
+    }
+  });
+
+  // AI: Improve/Shorten Project Description
+  app.post('/api/projects/:id/description/improve', requireAuth, async (req, res) => {
+    try {
+      let azureOpenAIService;
+      try {
+        const azureModule = await import('./services/azureOpenAI');
+        azureOpenAIService = azureModule.azureOpenAIService;
+      } catch (importError) {
+        console.error('Failed to import Azure OpenAI modules:', importError);
+        return res.status(503).json({ success: false, error: 'AI service unavailable' });
+      }
+
+      if (!azureOpenAIService || !azureOpenAIService.isConfigured()) {
+        return res.status(503).json({ success: false, error: 'AI service not configured' });
+      }
+
+      const currentUser = await mongoStorage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const project = await mongoStorage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      // Only owners or admins can run improvements for a project
+      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+
+      const { intent = 'improve', maxWords } = req.body || {};
+      const result = await azureOpenAIService.improveDescription({
+        title: project.title,
+        description: project.description,
+        intent,
+        maxWords,
+      });
+
+      res.json({ success: true, data: result });
+    } catch (error) {
+      console.error('Improve description error:', error);
+      res.status(500).json({ success: false, error: 'Failed to improve description' });
+    }
+  });
+
+  // AI: Manually set or regenerate project AI summary (owner/admin), independent of thread summary cache
+  app.post('/api/projects/:id/summary/save', requireAuth, async (req, res) => {
+    try {
+      const currentUser = await mongoStorage.getUser(req.session.userId);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const project = await mongoStorage.getProject(req.params.id);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+
+      const { summary } = req.body || {};
+      if (typeof summary !== 'string' || summary.trim().length === 0) {
+        return res.status(400).json({ success: false, error: 'Summary is required' });
+      }
+
+      const updated = await mongoStorage.updateProject(req.params.id, {
+        aiSummary: summary.trim(),
+        aiSummaryUpdatedAt: new Date(),
+      });
+
+      res.json({ success: true, data: { project: updated } });
+    } catch (error) {
+      console.error('Save AI summary error:', error);
+      res.status(500).json({ success: false, error: 'Failed to save AI summary' });
+    }
+  });
+
   // Project Share Routes
   app.post('/api/projects/:id/share', async (req, res) => {
     try {
@@ -1148,8 +1704,37 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post('/api/projects/:projectId/comments', requireAuth, async (req, res) => {
+  app.post('/api/projects/:projectId/comments', requireAuth, postLimiter, async (req, res) => {
     try {
+      // Normalize large base64 images in markdown: ensure it's a string and under server limits
+      if (typeof req.body.content !== 'string' || req.body.content.trim().length === 0) {
+        return res.status(400).json({ success: false, error: 'Content is required' });
+      }
+      // Convert any embedded data:image base64 to saved files with stable /uploads URLs
+      const originalContent: string = req.body.content;
+      const dataImgRegex = /!\[[^\]]*\]\((data:image\/[a-zA-Z0-9.+-]+;base64,[^)]+)\)/g;
+      let match: RegExpExecArray | null;
+      let processedContent = originalContent;
+      const seen = new Set<string>();
+      while ((match = dataImgRegex.exec(originalContent)) !== null) {
+        const dataUrl = match[1];
+        if (seen.has(dataUrl)) continue;
+        seen.add(dataUrl);
+        try {
+          const [meta, base64Data] = dataUrl.split(',');
+          const mime = meta.substring(meta.indexOf(':') + 1, meta.indexOf(';')) || 'image/jpeg';
+          const ext = mime.split('/')[1] || 'jpg';
+          const buffer = Buffer.from(base64Data, 'base64');
+          const uniqueName = generateUniqueFilename(`comment_${Date.now()}.${ext}`);
+          await saveFileToDisk(buffer, uniqueName);
+          const url = getFileUrl(uniqueName);
+          processedContent = processedContent.replaceAll(dataUrl, url);
+        } catch (e) {
+          // If conversion fails, keep original content (may exceed DB max length otherwise)
+        }
+      }
+      req.body.content = processedContent;
+
       const commentData = {
         ...req.body,
         projectId: req.params.projectId,
@@ -1157,6 +1742,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       const comment = await mongoStorage.createComment(commentData);
+
+      // Spam filtering after creation (so we can reference comment ID)
+      try {
+        const text = (comment.content || '').toLowerCase();
+        const hasManyLinks = (text.match(/https?:\/\//g) || []).length >= 3;
+        const forbidden = /free money|buy now|viagra|crypto|sex|porn|casino/i.test(text);
+        let aiScore: number | undefined;
+        try {
+          const ai = await azureOpenAIService.classifyContentModeration(text);
+          aiScore = ai.score;
+        } catch {}
+        if (hasManyLinks || forbidden || (aiScore !== undefined && aiScore > 0.8)) {
+          await Report.create({
+            reporterId: new Types.ObjectId(req.session.userId as string),
+            targetType: 'comment',
+            targetId: new Types.ObjectId(comment._id),
+            reason: 'spam',
+            details: 'Auto-flagged by spam filter',
+            autoFlagged: true,
+            status: 'pending',
+            scores: { heuristicScore: hasManyLinks || forbidden ? 0.9 : undefined, aiScore },
+          });
+        }
+      } catch (e) {
+        console.warn('Auto spam report failed:', e);
+      }
       
       // Create notifications
       try {
@@ -1170,7 +1781,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           );
         } else {
           // If it's a new top-level comment, notify the project owner
-          const project = await Project.findById(req.params.projectId).select('ownerId');
+          const project = await Project.findById(req.params.projectId).select('ownerId title');
           if (project) {
             await Notification.createNewCommentNotification(
               comment._id,
@@ -1178,6 +1789,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
               new Types.ObjectId(req.params.projectId),
               project.ownerId
             );
+
+            // Send owner an email (no actor name) if verified
+            try {
+              const owner = await User.findById(project.ownerId).select('email emailVerified');
+              if (owner?.email && owner.emailVerified) {
+                const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
+                const viewUrl = `${baseUrl}/forum/project/${req.params.projectId}`;
+                const html = buildCommentNotificationEmailHtml({ projectTitle: (project as any).title || 'Your project', viewUrl });
+                await sendEmailViaSES({
+                  to: owner.email,
+                  subject: 'New comment on your project',
+                  html,
+                  text: `Someone commented on your project. View it: ${viewUrl}`,
+                });
+              }
+            } catch (emailErr) {
+              console.warn('Comment email notify failed:', emailErr);
+            }
           }
         }
       } catch (notificationError) {
@@ -1319,6 +1948,153 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Gamification: user contribution metrics
+  app.get('/api/users/:id/metrics', async (req, res) => {
+    try {
+      const user = await User.findById(req.params.id).select('statistics streaks badges createdAt');
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      const ownedProjects = await Project.find({ ownerId: user._id, isDeleted: false }).select('analytics likes');
+      const totalLikesReceived = ownedProjects.reduce((sum, p: any) => sum + (p.analytics?.totalLikes || (p.likes?.length || 0)), 0);
+      const totalViews = ownedProjects.reduce((sum, p: any) => sum + (p.analytics?.views || 0), 0);
+      const data = {
+        statistics: user.statistics,
+        streaks: user.streaks,
+        badges: (user as any).badges || [],
+        totals: {
+          totalLikesReceived,
+          totalViews,
+        }
+      };
+      res.json({ success: true, data });
+    } catch (error) {
+      console.error('Get user metrics error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get user metrics' });
+    }
+  });
+
+  // Gamification: leaderboard (contributors)
+  app.get('/api/leaderboard', async (req, res) => {
+    try {
+      const period = parseInt((req.query.period as string) || '30');
+      const limit = parseInt((req.query.limit as string) || '10');
+      const items = await mongoStorage.getContributorLeaderboard(period, limit);
+      // Optionally award "Top Contributor" badges to top 3
+      try {
+        const top = items.slice(0, Math.min(3, items.length));
+        for (const entry of top) {
+          await User.findByIdAndUpdate(entry.userId, {
+            $addToSet: {
+              badges: {
+                key: 'top_contributor',
+                name: 'Top Contributor',
+                description: `Ranked among top contributors in the last ${period} days`,
+                icon: 'star',
+                awardedAt: new Date(),
+              }
+            }
+          });
+        }
+      } catch (e) {
+        // ignore badge failures
+      }
+      res.json({ success: true, data: { items } });
+    } catch (error) {
+      console.error('Get leaderboard error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get leaderboard' });
+    }
+  });
+
+  // Gamification: badges for a user
+  app.get('/api/users/:id/badges', async (req, res) => {
+    try {
+      const user = await User.findById(req.params.id).select('badges');
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      res.json({ success: true, data: { badges: (user as any).badges || [] } });
+    } catch (error) {
+      console.error('Get user badges error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get badges' });
+    }
+  });
+
+  // Follow a user
+  app.post('/api/users/:id/follow', requireAuth, async (req, res) => {
+    try {
+      const targetUserId = req.params.id;
+      const followerId = req.session.userId;
+      const ok = await mongoStorage.followUser(followerId, targetUserId);
+      if (!ok) return res.status(400).json({ success: false, error: 'Unable to follow user' });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Follow user error:', error);
+      res.status(500).json({ success: false, error: 'Failed to follow user' });
+    }
+  });
+
+  // Unfollow a user
+  app.delete('/api/users/:id/follow', requireAuth, async (req, res) => {
+    try {
+      const targetUserId = req.params.id;
+      const followerId = req.session.userId;
+      const ok = await mongoStorage.unfollowUser(followerId, targetUserId);
+      if (!ok) return res.status(400).json({ success: false, error: 'Unable to unfollow user' });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Unfollow user error:', error);
+      res.status(500).json({ success: false, error: 'Failed to unfollow user' });
+    }
+  });
+
+  // Followers list (respects privacy)
+  app.get('/api/users/:id/followers', async (req, res) => {
+    try {
+      const users = await mongoStorage.getFollowers(req.params.id);
+      res.json({ success: true, data: { users } });
+    } catch (error) {
+      console.error('Get followers error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get followers' });
+    }
+  });
+
+  // Following list (respects privacy)
+  app.get('/api/users/:id/following', async (req, res) => {
+    try {
+      const users = await mongoStorage.getFollowing(req.params.id);
+      res.json({ success: true, data: { users } });
+    } catch (error) {
+      console.error('Get following error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get following' });
+    }
+  });
+
+  // Personalized feed
+  app.get('/api/feed/personalized', requireAuth, async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const result = await mongoStorage.getPersonalizedFeed(req.session.userId, { page, limit });
+      res.json({ success: true, data: result });
+    } catch (error) {
+      console.error('Get personalized feed error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get personalized feed' });
+    }
+  });
+
+  // Recommendations for current user
+  app.get('/api/projects/recommended', requireAuth, async (req, res) => {
+    try {
+      const limit = parseInt(req.query.limit as string) || 12;
+      const projects = await mongoStorage.getRecommendedProjects(req.session.userId, limit);
+      res.json({ success: true, data: { projects } });
+    } catch (error) {
+      console.error('Get recommended projects error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get recommended projects' });
+    }
+  });
+
   app.put('/api/users/:id', requireAuth, async (req, res) => {
     try {
       console.log('Update user request:', {
@@ -1417,9 +2193,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let filePath;
         
         if (fileCategory === 'image') {
-          // For images, continue using Base64 encoding
-          const base64Data = file.buffer ? file.buffer.toString('base64') : '';
-          fileData = `data:${file.mimetype};base64,${base64Data}`;
+          // For images, save to disk and return a stable URL instead of embedding base64
+          await saveFileToDisk(file.buffer, uniqueFilename);
+          filePath = getFileUrl(uniqueFilename);
+          fileData = filePath;
         } else {
           // For documents and other files, save to disk
           filePath = await saveFileToDisk(file.buffer, uniqueFilename);
@@ -1430,8 +2207,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           type: fileCategory === 'image' ? 'image' : fileCategory,
           filename: uniqueFilename,
           originalName: file.originalname,
-          data: fileData,
-          url: fileCategory === 'image' ? undefined : fileData,
+          data: fileCategory === 'image' ? undefined : undefined,
+          url: fileData,
           size: file.size,
           mimetype: file.mimetype,
           category: fileCategory,
@@ -1483,7 +2260,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Process pre-compressed images (already in Base64 format)
-  app.post('/api/upload/processed-images', requireAuth, (req, res) => {
+  app.post('/api/upload/processed-images', requireAuth, async (req, res) => {
     try {
       const { images } = req.body;
       
@@ -1491,39 +2268,45 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ success: false, error: 'No images provided' });
       }
 
-      // Validate that all images have required fields and are properly formatted
-      const validatedImages = images.map((image, index) => {
+      const savedImages = [] as Array<{ filename: string; originalName: string; url: string; size: number; mimetype: string }>;
+
+      for (let index = 0; index < images.length; index++) {
+        const image = images[index];
         if (!image.data || !image.data.startsWith('data:image/')) {
           throw new Error(`Invalid image data format at index ${index}`);
         }
-        
         if (!image.filename || !image.originalName || !image.mimetype) {
           throw new Error(`Missing required fields at index ${index}`);
         }
 
-        // Ensure we have a size, calculate if missing
-        let size = image.size;
-        if (!size) {
-          // Estimate size from base64 data
-          const base64Data = image.data.split(',')[1];
-          size = Math.round((base64Data.length * 3) / 4);
-        }
+        const base64Data = image.data.split(',')[1];
+        const buffer = Buffer.from(base64Data, 'base64');
+        const extFromMime = image.mimetype.split('/')[1] || 'jpg';
+        const uniqueFilename = generateUniqueFilename(
+          image.originalName.endsWith(`.${extFromMime}`)
+            ? image.originalName
+            : `${image.originalName}.${extFromMime}`
+        );
 
-        return {
-          filename: image.filename,
+        await saveFileToDisk(buffer, uniqueFilename);
+        const url = getFileUrl(uniqueFilename);
+        const size = image.size || buffer.byteLength;
+
+        savedImages.push({
+          filename: uniqueFilename,
           originalName: image.originalName,
-          data: image.data,
-          size: size,
-          mimetype: image.mimetype
-        };
-      });
+          url,
+          size,
+          mimetype: image.mimetype,
+        });
+      }
 
       res.json({ 
         success: true, 
-        data: { files: validatedImages },
-        message: `${validatedImages.length} processed images ready` 
+        data: { files: savedImages },
+        message: `${savedImages.length} processed images saved` 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Processed images upload error:', error);
       res.status(500).json({ success: false, error: error.message || 'Failed to process images' });
     }
@@ -2540,6 +3323,478 @@ Please provide a helpful, data-driven response based on the available statistics
   // Serve uploaded files
   app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
+  // User search (for DM picker) - authenticated, limited fields, better ranking
+  app.get('/api/users/search', requireAuth, async (req, res) => {
+    try {
+      const q = (req.query.q as string) || '';
+      const limit = Math.min(parseInt((req.query.limit as string) || '10', 10), 50);
+      const currentUserId = new Types.ObjectId(req.session.userId);
+
+      // use top-level escapeRegex
+
+      if (!q) {
+        // default: most recently active users (excluding self)
+        const users = await User.find({ _id: { $ne: currentUserId } })
+          .select('username fullName profileImage')
+          .sort({ lastLoginAt: -1, createdAt: -1 })
+          .limit(limit);
+        return res.json({ success: true, data: { items: users } });
+      }
+
+      const safe = escapeRegex(q);
+      const pipeline = [
+        { $match: { _id: { $ne: currentUserId }, $or: [
+          { username: { $regex: safe, $options: 'i' } },
+          { fullName: { $regex: safe, $options: 'i' } },
+          { email: { $regex: safe, $options: 'i' } },
+        ] } },
+        { $addFields: {
+          usernamePrefix: { $regexMatch: { input: '$username', regex: new RegExp('^' + safe, 'i') } },
+          fullNamePrefix: { $regexMatch: { input: '$fullName', regex: new RegExp('^' + safe, 'i') } },
+        } },
+        { $sort: { usernamePrefix: -1, fullNamePrefix: -1, lastLoginAt: -1, createdAt: -1 } },
+        { $limit: limit },
+        { $project: { username: 1, fullName: 1, profileImage: 1 } },
+      ];
+
+      const users = await User.aggregate(pipeline as any);
+      res.json({ success: true, data: { items: users } });
+    } catch (error) {
+      console.error('User search error:', error);
+      res.status(500).json({ success: false, error: 'Failed to search users' });
+    }
+  });
+
+  // List users (for DM dropdown) - authenticated, paginated, minimal fields
+  app.get('/api/users', requireAuth, async (req, res) => {
+    try {
+      const page = Math.max(parseInt(req.query.page as string) || 1, 1);
+      const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 50, 1), 1000);
+      const search = (req.query.search as string) || '';
+
+      const filter: any = {};
+      if (search) {
+        filter.$or = [
+          { username: { $regex: search, $options: 'i' } },
+          { fullName: { $regex: search, $options: 'i' } },
+          { email: { $regex: search, $options: 'i' } },
+        ];
+      }
+
+      const skip = (page - 1) * limit;
+      const [users, total] = await Promise.all([
+        User.find(filter)
+          .select('username fullName profileImage')
+          .sort({ fullName: 1, username: 1 })
+          .skip(skip)
+          .limit(limit),
+        User.countDocuments(filter),
+      ]);
+
+      const totalPages = Math.ceil(total / limit);
+      res.json({
+        success: true,
+        data: {
+          items: users,
+          pagination: { page, limit, total, totalPages },
+        },
+      });
+    } catch (error) {
+      console.error('Users list error:', error);
+      res.status(500).json({ success: false, error: 'Failed to list users' });
+    }
+  });
+
+  // Resolve user by exact username (case-insensitive)
+  app.get('/api/users/resolve', requireAuth, async (req, res) => {
+    try {
+      const username = (req.query.username as string) || '';
+      if (!username) return res.status(400).json({ success: false, error: 'username required' });
+      const user = await User.findOne({ username: { $regex: `^${username}$`, $options: 'i' } })
+        .select('username fullName profileImage');
+      if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+      res.json({ success: true, data: { user } });
+    } catch (error) {
+      console.error('Resolve user error:', error);
+      res.status(500).json({ success: false, error: 'Failed to resolve user' });
+    }
+  });
+
+  // Recent contacts from conversations for quick DM suggestions
+  app.get('/api/conversations/recent-contacts', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId);
+      const conversations = await Conversation.find({ participants: userId })
+        .sort({ lastMessageAt: -1 })
+        .limit(20)
+        .select('participants');
+
+      const otherIds = Array.from(new Set(
+        conversations.flatMap(c => c.participants.map(p => p.toString())).filter(id => id !== userId.toString())
+      )).map(id => new Types.ObjectId(id));
+
+      const users = await User.find({ _id: { $in: otherIds } })
+        .select('username fullName profileImage');
+
+      res.json({ success: true, data: { items: users } });
+    } catch (error) {
+      console.error('Recent contacts error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get recent contacts' });
+    }
+  });
+
+  // ================================
+  // CHAT: Conversations & Messages
+  // ================================
+
+  // List user's conversations
+  app.get('/api/conversations', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId);
+      const conversations = await Conversation.find({ participants: userId })
+        .sort({ lastMessageAt: -1, updatedAt: -1 })
+        .limit(100);
+      res.json({ success: true, data: { conversations } });
+    } catch (error) {
+      console.error('List conversations error:', error);
+      res.status(500).json({ success: false, error: 'Failed to list conversations' });
+    }
+  });
+
+  // Create a conversation (dm/group/project)
+  app.post('/api/conversations', requireAuth, async (req, res) => {
+    try {
+      const { type, name, description, participants = [], projectId } = req.body || {};
+
+      if (!['dm', 'group', 'project'].includes(type)) {
+        return res.status(400).json({ success: false, error: 'Invalid conversation type' });
+      }
+
+      const creatorId = new Types.ObjectId(req.session.userId);
+      const participantIds: Types.ObjectId[] = Array.from(new Set([creatorId.toString(), ...participants]))
+        .map((id: string) => new Types.ObjectId(id));
+
+      if (type === 'dm' && participantIds.length !== 2) {
+        return res.status(400).json({ success: false, error: 'DM must have exactly two participants' });
+      }
+
+      const conversation = await Conversation.create({
+        type,
+        name,
+        description,
+        participants: participantIds,
+        createdBy: creatorId,
+        projectId: projectId ? new Types.ObjectId(projectId) : undefined,
+        lastMessageAt: new Date(),
+      });
+
+      res.status(201).json({ success: true, data: { conversation } });
+    } catch (error) {
+      console.error('Create conversation error:', error);
+      res.status(500).json({ success: false, error: 'Failed to create conversation' });
+    }
+  });
+
+  // Get messages in a conversation
+  app.get('/api/conversations/:id/messages', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId);
+      const conversationId = new Types.ObjectId(req.params.id);
+
+      const conversation = await Conversation.findById(conversationId).select('participants');
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      const page = parseInt((req.query.page as string) || '1');
+      const limit = parseInt((req.query.limit as string) || '50');
+      const skip = (page - 1) * limit;
+
+      const [messages, total] = await Promise.all([
+        Message.find({ conversationId })
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(limit),
+        Message.countDocuments({ conversationId }),
+      ]);
+
+      res.json({ success: true, data: {
+        messages: messages.reverse(),
+        pagination: {
+          page,
+          limit,
+          total,
+          totalPages: Math.ceil(total / limit),
+        },
+      }});
+    } catch (error) {
+      console.error('List messages error:', error);
+      res.status(500).json({ success: false, error: 'Failed to list messages' });
+    }
+  });
+
+  // Post a message
+  app.post('/api/conversations/:id/messages', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId);
+      const conversationId = new Types.ObjectId(req.params.id);
+
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      const { content = '', attachments = [] } = req.body || {};
+      if (!content && (!attachments || attachments.length === 0)) {
+        return res.status(400).json({ success: false, error: 'Message cannot be empty' });
+      }
+
+      const message = await Message.create({
+        conversationId,
+        senderId: userId,
+        content,
+        attachments,
+        readBy: [userId],
+      });
+
+      await Conversation.findByIdAndUpdate(conversationId, { lastMessageAt: new Date() });
+
+      // Fan-out: enqueue notifications to other participants (in-app)
+      const recipients = conversation.participants.filter(p => !p.equals(userId));
+      try {
+        await Promise.all(recipients.map(async (recipientId) => {
+          return Notification.create({
+            recipientId,
+            type: 'new_message',
+            relatedUser: userId,
+            title: conversation.name || (conversation.type === 'dm' ? 'New message' : 'New chat message'),
+            message: content?.slice(0, 120) || 'Attachment',
+            read: false,
+            emailSent: false,
+          });
+        }));
+      } catch (e) {
+        console.error('Chat notification error:', e);
+      }
+
+      // Notify SSE subscribers
+      broadcastToConversation(conversationId.toString(), {
+        type: 'message',
+        data: { message },
+      });
+
+      res.status(201).json({ success: true, data: { message } });
+    } catch (error) {
+      console.error('Create message error:', error);
+      res.status(500).json({ success: false, error: 'Failed to create message' });
+    }
+  });
+
+  // SSE: subscribe to conversation stream
+  type SseClient = { id: string; res: any; conversationId: string; userId: string };
+  const sseClients = new Map<string, SseClient>();
+  function broadcastToConversation(conversationId: string, payload: any) {
+    const data = `data: ${JSON.stringify(payload)}\n\n`;
+    sseClients.forEach((client) => {
+      if (client.conversationId === conversationId) {
+        try { client.res.write(data); } catch {}
+      }
+    });
+  }
+
+  app.get('/api/conversations/:id/stream', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId);
+      const conversationId = new Types.ObjectId(req.params.id);
+
+      const conversation = await Conversation.findById(conversationId).select('participants');
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders?.();
+
+      const clientId = `${req.session.userId}:${Date.now()}:${Math.random()}`;
+      const client: SseClient = { id: clientId, res, conversationId: conversationId.toString(), userId: userId.toString() };
+      sseClients.set(clientId, client);
+
+      res.write(`data: ${JSON.stringify({ type: 'connected', data: { clientId } })}\n\n`);
+
+      req.on('close', () => {
+        sseClients.delete(clientId);
+      });
+    } catch (error) {
+      console.error('SSE subscribe error:', error);
+      res.status(500).end();
+    }
+  });
+
+  // Translation Routes
+  app.post('/api/translate', async (req, res) => {
+    try {
+      const body = translateRequestSchema.parse(req.body);
+      const { sourceType, sourceId, field, text, sourceLanguage, targetLanguage, forceRefresh } = body;
+      const crypto = await import('crypto');
+      const originalTextHash = crypto.createHash('sha256').update(text).digest('hex');
+
+      // Check for selected community translation first
+      const selectedCommunity = await Translation.findOne({
+        sourceType,
+        sourceId,
+        field,
+        targetLanguage,
+        selected: true,
+      });
+      if (selectedCommunity && !forceRefresh) {
+        return res.json({ success: true, data: { translatedText: selectedCommunity.translatedText, provider: 'community', isMachine: false } });
+      }
+
+      // Then check cached machine translation
+      if (!forceRefresh) {
+        const cached = await Translation.findOne({ sourceType, sourceId, field, targetLanguage, provider: 'azure-openai', originalTextHash });
+        if (cached) {
+          return res.json({ success: true, data: { translatedText: cached.translatedText, provider: 'azure-openai', isMachine: true } });
+        }
+      }
+
+      // Generate via Azure
+      const translatedText = await azureOpenAIService.translateText({
+        text,
+        sourceLanguage,
+        targetLanguage,
+        preserveMarkdown: true,
+      });
+
+      // Upsert cache for machine translation
+      try {
+        await Translation.updateOne(
+          { sourceType, sourceId, field, targetLanguage, provider: 'azure-openai', originalTextHash },
+          { $set: { translatedText, sourceLanguage } },
+          { upsert: true }
+        );
+      } catch (e) {
+        // ignore unique conflicts
+      }
+
+      return res.json({ success: true, data: { translatedText, provider: 'azure-openai', isMachine: true } });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ success: false, error: 'Validation error', details: error.errors });
+      }
+      console.error('Translation error:', error);
+      res.status(500).json({ success: false, error: 'Failed to translate' });
+    }
+  });
+
+  // Batch UI translation (no caching per-item in DB; return ad-hoc results)
+  app.post('/api/translate/batch', async (req, res) => {
+    try {
+      const { translateBatchRequestSchema } = await import('@shared/schema');
+      const body = translateBatchRequestSchema.parse(req.body);
+      const results: string[] = [];
+      for (const item of body.items) {
+        const translated = await azureOpenAIService.translateText({
+          text: item.text,
+          sourceLanguage: item.sourceLanguage,
+          targetLanguage: item.targetLanguage,
+          preserveMarkdown: false,
+        });
+        results.push(translated);
+      }
+      res.json({ success: true, data: { items: results } });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ success: false, error: 'Validation error', details: error.errors });
+      }
+      console.error('Batch translation error:', error);
+      res.status(500).json({ success: false, error: 'Failed to translate batch' });
+    }
+  });
+
+  // Submit community translation
+  app.post('/api/translate/community', requireAuth, async (req, res) => {
+    try {
+      const body = communityTranslationSchema.parse(req.body);
+      const { sourceType, sourceId, field, targetLanguage, translatedText } = body;
+
+      const created = await Translation.create({
+        sourceType,
+        sourceId,
+        field,
+        targetLanguage,
+        translatedText,
+        provider: 'community',
+        createdBy: new Types.ObjectId(req.session.userId),
+      });
+      res.status(201).json({ success: true, data: { translation: created } });
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ success: false, error: 'Validation error', details: error.errors });
+      }
+      console.error('Community translation submit error:', error);
+      res.status(500).json({ success: false, error: 'Failed to submit translation' });
+    }
+  });
+
+  // List translations for a source/field/language (for community review)
+  app.get('/api/translate', async (req, res) => {
+    try {
+      const { sourceType, sourceId, field, targetLanguage } = req.query as Record<string, string>;
+      if (!sourceType || !sourceId || !field || !targetLanguage) {
+        return res.status(400).json({ success: false, error: 'Missing required query parameters' });
+      }
+      const items = await Translation.find({ sourceType, sourceId, field, targetLanguage }).sort({ selected: -1, upvotes: -1, createdAt: -1 });
+      res.json({ success: true, data: { translations: items } });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to list translations' });
+    }
+  });
+
+  // Vote on a community translation
+  app.post('/api/translate/:id/vote', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { vote } = req.body || {};
+      if (!['up','down'].includes(vote)) {
+        return res.status(400).json({ success: false, error: 'vote must be up or down' });
+      }
+      const doc = await Translation.findById(id);
+      if (!doc || doc.provider !== 'community') {
+        return res.status(404).json({ success: false, error: 'Translation not found' });
+      }
+      if (vote === 'up') doc.upvotes = (doc.upvotes || 0) + 1; else doc.downvotes = (doc.downvotes || 0) + 1;
+      await doc.save();
+      res.json({ success: true, data: { translation: doc } });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to vote' });
+    }
+  });
+
+  // Admin select a preferred community translation
+  app.post('/api/admin/translate/:id/select', requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const doc = await Translation.findById(id);
+      if (!doc || doc.provider !== 'community') {
+        return res.status(404).json({ success: false, error: 'Translation not found' });
+      }
+      await Translation.updateMany({
+        sourceType: doc.sourceType,
+        sourceId: doc.sourceId,
+        field: doc.field,
+        targetLanguage: doc.targetLanguage,
+        provider: 'community',
+      }, { $set: { selected: false } });
+      doc.selected = true;
+      await doc.save();
+      res.json({ success: true, data: { translation: doc } });
+    } catch (error) {
+      res.status(500).json({ success: false, error: 'Failed to select translation' });
+    }
+  });
   const httpServer = createServer(app);
   return httpServer;
 }

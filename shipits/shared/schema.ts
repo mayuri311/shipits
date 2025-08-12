@@ -58,11 +58,33 @@ export const userSchema = z.object({
     highContrast: z.boolean().default(false)
   }).optional(),
   subscriptions: z.array(z.instanceof(Types.ObjectId)).optional(),
+  followers: z.array(z.instanceof(Types.ObjectId)).optional(),
+  following: z.array(z.instanceof(Types.ObjectId)).optional(),
   lastLoginAt: z.date().optional(),
   isActive: z.boolean().default(true),
   role: z.enum(['user', 'moderator', 'admin']).default('user'),
+  isFollowersListPublic: z.boolean().default(true).optional(),
+  isFollowingListPublic: z.boolean().default(true).optional(),
+  // Email verification
+  emailVerified: z.boolean().default(false).optional(),
+  emailVerificationToken: z.string().optional().nullable(),
+  emailVerificationExpiresAt: z.date().optional().nullable(),
+  emailVerifiedAt: z.date().optional().nullable(),
+  passwordResetToken: z.string().optional().nullable(),
+  passwordResetExpiresAt: z.date().optional().nullable(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional()
+});
+
+// i18n: language preferences
+export const supportedLanguageCodes = [
+  'en','es','fr','de','pt','it','nl','sv','pl','ru','ar','he','tr','hi','bn','zh','ja','ko','vi','th','id'
+] as const;
+export type SupportedLanguageCode = typeof supportedLanguageCodes[number];
+
+export const i18nPreferencesSchema = z.object({
+  language: z.enum(supportedLanguageCodes).default('en'),
+  contentLanguage: z.enum(supportedLanguageCodes).default('en'),
 });
 
 // MongoDB Project Schema Validation
@@ -74,6 +96,10 @@ export const projectSchema = z.object({
   status: z.enum(['active', 'inactive', 'archived', 'completed']).default('active'),
   description: z.string().min(1).max(2000),
   tags: z.array(z.string().max(50)),
+  aiSummary: z.string().max(1200).optional(),
+  aiSummaryUpdatedAt: z.date().optional(),
+  aiSuggestedTags: z.array(z.string().max(50)).optional(),
+  embedding: z.array(z.number()).optional(),
   media: z.array(z.object({
     type: z.enum(['image', 'video', 'document', 'archive', 'other']),
     url: z.string().optional(), // Allow both URLs and base64 data
@@ -148,6 +174,38 @@ export const commentSchema = z.object({
   updatedAt: z.date().optional()
 });
 
+// Translation DTOs
+export const translateRequestSchema = z.object({
+  sourceType: z.enum(['project','project_update','comment','user','message','event']),
+  sourceId: z.string().min(1),
+  field: z.string().min(1),
+  text: z.string().min(1).max(50000),
+  sourceLanguage: z.string().optional(),
+  targetLanguage: z.enum(supportedLanguageCodes),
+  forceRefresh: z.boolean().optional().default(false),
+});
+
+export const communityTranslationSchema = z.object({
+  sourceType: z.enum(['project','project_update','comment','user','message','event']),
+  sourceId: z.string().min(1),
+  field: z.string().min(1),
+  targetLanguage: z.enum(supportedLanguageCodes),
+  translatedText: z.string().min(1).max(50000),
+});
+
+export type TranslateRequest = z.infer<typeof translateRequestSchema>;
+export type CommunityTranslation = z.infer<typeof communityTranslationSchema>;
+
+// Batch UI translation
+export const translateBatchRequestSchema = z.object({
+  items: z.array(z.object({
+    text: z.string().min(1).max(2000),
+    sourceLanguage: z.string().optional(),
+    targetLanguage: z.enum(supportedLanguageCodes),
+  })).min(1).max(200)
+});
+export type TranslateBatchRequest = z.infer<typeof translateBatchRequestSchema>;
+
 // MongoDB Event Schema Validation
 export const eventSchema = z.object({
   _id: z.instanceof(Types.ObjectId).optional(),
@@ -197,7 +255,7 @@ export const subscriptionSchema = z.object({
 export const notificationSchema = z.object({
   _id: z.instanceof(Types.ObjectId).optional(),
   recipientId: z.instanceof(Types.ObjectId),
-  type: z.enum(['project_update', 'comment_reply', 'mention', 'project_status_change', 'new_subscriber', 'event_registration', 'event_reminder', 'project_like', 'comment_like', 'new_comment']),
+  type: z.enum(['project_update', 'comment_reply', 'mention', 'project_status_change', 'new_subscriber', 'event_registration', 'event_reminder', 'project_like', 'comment_like', 'new_comment', 'new_message']),
   relatedProject: z.instanceof(Types.ObjectId).optional(),
   relatedComment: z.instanceof(Types.ObjectId).optional(),
   relatedUser: z.instanceof(Types.ObjectId).optional(),
@@ -210,6 +268,37 @@ export const notificationSchema = z.object({
   emailSentAt: z.date().optional(),
   expiresAt: z.date().optional(),
   createdAt: z.date().optional()
+});
+
+// Chat/Conversation Schemas
+export const conversationSchema = z.object({
+  _id: z.instanceof(Types.ObjectId).optional(),
+  type: z.enum(['dm', 'group', 'project']),
+  name: z.string().max(120).optional(),
+  description: z.string().max(500).optional(),
+  participants: z.array(z.instanceof(Types.ObjectId)),
+  createdBy: z.instanceof(Types.ObjectId),
+  projectId: z.instanceof(Types.ObjectId).optional(),
+  lastMessageAt: z.date().optional(),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional(),
+});
+
+export const messageSchema = z.object({
+  _id: z.instanceof(Types.ObjectId).optional(),
+  conversationId: z.instanceof(Types.ObjectId),
+  senderId: z.instanceof(Types.ObjectId),
+  content: z.string().max(5000).optional().default(''),
+  attachments: z.array(z.object({
+    type: z.enum(['image', 'file', 'other']),
+    url: z.string(),
+    filename: z.string().optional(),
+    size: z.number().optional(),
+  })).optional(),
+  mentions: z.array(z.instanceof(Types.ObjectId)).optional(),
+  readBy: z.array(z.instanceof(Types.ObjectId)).optional(),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional(),
 });
 
 // MongoDB Category Schema Validation
@@ -247,7 +336,50 @@ export const registerSchema = z.object({
     'Tepper School of Business',
     'Other'
   ]).optional(),
-  graduationYear: z.number().min(2020).max(2035).optional()
+  graduationYear: z.number().min(2020).max(2035).optional(),
+  captchaToken: z.string().optional(),
+});
+
+// Email verification DTOs
+export const emailVerifyRequestSchema = z.object({
+  token: z.string().min(10),
+});
+
+export const resendVerificationSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export type EmailVerifyRequest = z.infer<typeof emailVerifyRequestSchema>;
+export type ResendVerificationRequest = z.infer<typeof resendVerificationSchema>;
+
+// Password reset DTOs
+export const requestPasswordResetSchema = z.object({
+  email: z.string().email('Invalid email address'),
+});
+
+export const confirmPasswordResetSchema = z.object({
+  token: z.string().min(10),
+  newPassword: z.string().min(6, 'Password must be at least 6 characters'),
+  confirmPassword: z.string().min(6, 'Password must be at least 6 characters'),
+}).refine((d) => d.newPassword === d.confirmPassword, {
+  message: 'Passwords do not match',
+  path: ['confirmPassword'],
+});
+
+export type RequestPasswordReset = z.infer<typeof requestPasswordResetSchema>;
+export type ConfirmPasswordReset = z.infer<typeof confirmPasswordResetSchema>;
+
+// Report Schemas
+export const createReportSchema = z.object({
+  targetType: z.enum(['user', 'project', 'comment']),
+  targetId: z.string().min(1),
+  reason: z.enum(['spam', 'abuse', 'harassment', 'hate', 'sexual', 'self-harm', 'copyright', 'other']),
+  details: z.string().max(1000).optional(),
+});
+
+export const updateReportStatusSchema = z.object({
+  status: z.enum(['pending', 'reviewed', 'action_taken', 'dismissed']),
+  adminNotes: z.string().max(1000).optional(),
 });
 
 // Create schemas for inserts (without MongoDB-specific fields)
@@ -330,12 +462,27 @@ export type Event = z.infer<typeof eventSchema>;
 export type Category = z.infer<typeof categorySchema>;
 export type Subscription = z.infer<typeof subscriptionSchema>;
 export type Notification = z.infer<typeof notificationSchema>;
+export type Conversation = z.infer<typeof conversationSchema>;
+export type Message = z.infer<typeof messageSchema>;
 
 export type CreateUser = z.infer<typeof createUserSchema>;
 export type CreateProject = z.infer<typeof createProjectSchema>;
 export type CreateComment = z.infer<typeof createCommentSchema>;
 export type CreateEvent = z.infer<typeof createEventSchema>;
 export type CreateCategory = z.infer<typeof createCategorySchema>;
+export type CreateReport = z.infer<typeof createReportSchema>;
+export const createConversationSchema = conversationSchema.pick({ type: true, name: true, description: true, participants: true, projectId: true });
+export const createMessageSchema = z.object({
+  content: z.string().max(5000).optional(),
+  attachments: z.array(z.object({
+    type: z.enum(['image', 'file', 'other']),
+    url: z.string(),
+    filename: z.string().optional(),
+    size: z.number().optional(),
+  })).optional(),
+});
+export type CreateConversation = z.infer<typeof createConversationSchema>;
+export type CreateMessage = z.infer<typeof createMessageSchema>;
 
 export type UpdateUser = z.infer<typeof updateUserSchema>;
 export type UpdateProject = z.infer<typeof updateProjectSchema>;
@@ -343,6 +490,7 @@ export type UpdateCategory = z.infer<typeof updateCategorySchema>;
 
 export type LoginRequest = z.infer<typeof loginSchema>;
 export type RegisterRequest = z.infer<typeof registerSchema>;
+export type UpdateReportStatus = z.infer<typeof updateReportStatusSchema>;
 
 // API Response types
 export type ApiResponse<T = any> = {

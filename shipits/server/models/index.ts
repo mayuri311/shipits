@@ -13,6 +13,8 @@ export { ProjectAnalytics, type IProjectAnalytics } from './ProjectAnalytics';
 export { ForumModerationLog, type IForumModerationLog } from './ForumModerationLog';
 export { ThreadSummary, type IThreadSummary } from './ThreadSummary';
 export { Contact, type IContact } from './Contact';
+export { Translation, type ITranslation } from './Translation';
+export { Report, type IReport } from './Report';
 
 // Model initialization function
 import mongoose from 'mongoose';
@@ -27,6 +29,8 @@ import { UserActivity } from './UserActivity';
 import { ProjectAnalytics } from './ProjectAnalytics';
 import { ForumModerationLog } from './ForumModerationLog';
 import { ThreadSummary } from './ThreadSummary';
+import { Conversation } from './Conversation';
+import { Message } from './Message';
 import { Contact } from './Contact';
 
 /**
@@ -50,7 +54,11 @@ export async function initializeModels(): Promise<void> {
       'UserActivity',
       'ProjectAnalytics',
       'ForumModerationLog',
-      'Contact'
+      'Report',
+      'Contact',
+      'Conversation',
+      'Message',
+      'Translation'
     ];
     
     // Ensure indexes are created for all models
