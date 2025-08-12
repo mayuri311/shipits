@@ -100,6 +100,7 @@ export const projectsApi = {
     search?: string;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    ownerId?: string;
   } = {}): Promise<PaginatedResponse<Project>> {
     const searchParams = new URLSearchParams();
     
@@ -111,6 +112,7 @@ export const projectsApi = {
     if (params.search) searchParams.set('search', params.search);
     if (params.sortBy) searchParams.set('sortBy', params.sortBy);
     if (params.sortOrder) searchParams.set('sortOrder', params.sortOrder);
+    if (params.ownerId) searchParams.set('ownerId', params.ownerId);
 
     const response = await fetch(`${API_BASE}/projects?${searchParams}`, {
       credentials: 'include',
@@ -572,6 +574,10 @@ export const chatApi = {
     const response = await fetch(`${API_BASE}/conversations`, { credentials: 'include' });
     return handleResponse(response);
   },
+  async getConversation(conversationId: string): Promise<ApiResponse<{ conversation: Conversation }>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}`, { credentials: 'include' });
+    return handleResponse(response);
+  },
   async getRecentContacts(): Promise<ApiResponse<{ items: Array<Pick<User, '_id' | 'username' | 'fullName' | 'profileImage'>> }>> {
     const response = await fetch(`${API_BASE}/conversations/recent-contacts`, { credentials: 'include' });
     return handleResponse(response);
@@ -598,6 +604,22 @@ export const chatApi = {
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+  async editMessage(messageId: string, content: string): Promise<ApiResponse<{ message: Message }>> {
+    const response = await fetch(`${API_BASE}/messages/${messageId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ content }),
+    });
+    return handleResponse(response);
+  },
+  async deleteMessage(messageId: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/messages/${messageId}`, {
+      method: 'DELETE',
+      credentials: 'include',
     });
     return handleResponse(response);
   },
@@ -1073,4 +1095,47 @@ export const contactApi = {
 export const healthCheck = async (): Promise<ApiResponse> => {
   const response = await fetch(`${API_BASE}/health`);
   return handleResponse(response);
+};
+
+// Onboarding, Tips, Dashboard, and AI personalization APIs
+export const onboardingApi = {
+  async completeOnboarding(userId: string, payload: { stepsCompleted?: string[]; version?: number }): Promise<ApiResponse<{ user: User }>> {
+    const response = await fetch(`${API_BASE}/users/${userId}/onboarding/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload || {}),
+    });
+    return handleResponse(response);
+  },
+  async dismissTip(userId: string, tipId: string): Promise<ApiResponse<{ user: User }>> {
+    const response = await fetch(`${API_BASE}/users/${userId}/ui-tips/dismiss`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ tipId }),
+    });
+    return handleResponse(response);
+  },
+  async saveDashboardPins(userId: string, payload: { pinnedProjectIds: string[]; pinnedStats: string[]; layout?: 'standard'|'compact'|'cards' }): Promise<ApiResponse<{ user: User }>> {
+    const response = await fetch(`${API_BASE}/users/${userId}/dashboard/pins`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload),
+    });
+    return handleResponse(response);
+  },
+};
+
+export const aiApi = {
+  async personalizeUI(payload: { usageSignals: Array<{ name: string; value: number }>; preferences?: any; current?: any }): Promise<ApiResponse<{ preset: string; accentColor: string; mode: string; layout: string; reason?: string }>> {
+    const response = await fetch(`${API_BASE}/ai/personalize-ui`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(payload || { usageSignals: [] }),
+    });
+    return handleResponse(response);
+  },
 };

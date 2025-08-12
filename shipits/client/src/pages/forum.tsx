@@ -657,7 +657,7 @@ export default function Forum() {
             <div className="bg-white rounded-lg shadow-sm p-4 mb-8">
               <h2 className="text-lg font-semibold mb-3">Trending projects</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {trendingData.data.projects.map((p: Project) => (
+                {trendingData.data.projects.slice(0, 3).map((p: Project) => (
                   <Link key={p._id} href={`/forum/project/${p._id}`} className="border rounded-lg p-3 hover:shadow">
                     <div className="font-medium mb-1">{p.title}</div>
                     <div className="text-xs text-gray-500 mb-2">by {typeof p.ownerId === 'object' ? (p.ownerId.fullName || p.ownerId.username) : ''}</div>

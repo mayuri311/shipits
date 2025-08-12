@@ -58,6 +58,31 @@ export interface IUser extends Document {
   role: 'user' | 'moderator' | 'admin';
   isFollowersListPublic?: boolean;
   isFollowingListPublic?: boolean;
+  // Onboarding and tips
+  onboarding?: {
+    completed: boolean;
+    version?: number;
+    stepsCompleted?: string[];
+    completedAt?: Date;
+  };
+  uiTips?: {
+    dismissed: string[];
+  };
+  // Dashboard customization
+  dashboardPreferences?: {
+    pinnedProjectIds: Types.ObjectId[];
+    pinnedStats: Array<'totalProjectViews' | 'totalLikesReceived' | 'totalCommentsPosted' | 'totalProjectsCreated' | 'unreadNotifications'>;
+    layout: 'standard' | 'compact' | 'cards';
+  };
+  // Last AI personalization suggestion applied/saved
+  lastAiPersonalization?: {
+    preset: string;
+    accentColor: 'blue' | 'purple' | 'green' | 'orange' | 'red' | 'pink';
+    mode: 'light' | 'dark' | 'system';
+    layout: 'standard' | 'compact' | 'cards';
+    reason?: string;
+    generatedAt: Date;
+  };
   // Email verification
   emailVerified?: boolean;
   emailVerificationToken?: string | null;
@@ -135,6 +160,33 @@ const ThemePreferencesSchema = new Schema<IThemePreferences>({
     type: Boolean,
     default: false
   }
+}, { _id: false });
+
+// Onboarding/tips/dashboard schemas
+const OnboardingSchema = new Schema({
+  completed: { type: Boolean, default: false },
+  version: { type: Number, default: 1 },
+  stepsCompleted: { type: [String], default: [] },
+  completedAt: { type: Date, default: null },
+}, { _id: false });
+
+const UiTipsSchema = new Schema({
+  dismissed: { type: [String], default: [] },
+}, { _id: false });
+
+const DashboardPreferencesSchema = new Schema({
+  pinnedProjectIds: [{ type: Schema.Types.ObjectId, ref: 'Project', index: true }],
+  pinnedStats: { type: [String], default: [] },
+  layout: { type: String, enum: ['standard', 'compact', 'cards'], default: 'standard' },
+}, { _id: false });
+
+const AiPersonalizationSchema = new Schema({
+  preset: { type: String, default: 'default' },
+  accentColor: { type: String, enum: ['blue','purple','green','orange','red','pink'], default: 'blue' },
+  mode: { type: String, enum: ['light','dark','system'], default: 'system' },
+  layout: { type: String, enum: ['standard','compact','cards'], default: 'standard' },
+  reason: { type: String, default: '' },
+  generatedAt: { type: Date, default: Date.now },
 }, { _id: false });
 
 const UserSchema = new Schema<IUser>({
@@ -285,6 +337,10 @@ const UserSchema = new Schema<IUser>({
     type: Boolean,
     default: true
   },
+  onboarding: { type: OnboardingSchema, default: {} },
+  uiTips: { type: UiTipsSchema, default: {} },
+  dashboardPreferences: { type: DashboardPreferencesSchema, default: {} },
+  lastAiPersonalization: { type: AiPersonalizationSchema, default: undefined },
   // Email verification fields
   emailVerified: {
     type: Boolean,

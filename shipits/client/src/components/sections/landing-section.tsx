@@ -17,7 +17,7 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
   return (
     <section 
       id="landing" 
-      className="relative min-h-screen flex flex-col gradient-bg"
+      className="relative min-h-screen flex flex-col hero-soft-bg"
     >
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
       {/* Fixed Header Navigation */}

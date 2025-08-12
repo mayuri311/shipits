@@ -20,7 +20,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { adminApi, categoriesApi, reportsApi } from '@/lib/api';
+import { adminApi, categoriesApi, reportsApi, commentsApi } from '@/lib/api';
 import { Link, useLocation } from 'wouter';
 
 interface AnalyticsData {
@@ -448,7 +448,7 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
         <Tabs defaultValue="overview" className="w-full" onValueChange={(v) => setActiveTab(v)}>
-          <TabsList className="grid w-full grid-cols-7 mb-8 glass-effect hover-lift">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-1 mb-8 glass-effect hover-lift">
             <TabsTrigger value="overview" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50">
               <TrendingUp className="h-4 w-4" />
               Overview
@@ -654,48 +654,100 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <div className="bg-white rounded-lg shadow-sm border">
-              <div className="grid grid-cols-12 text-xs font-semibold text-gray-600 border-b p-2">
-                <div className="col-span-2">Type</div>
+            <div className="bg-white rounded-lg shadow-sm border overflow-x-auto">
+              <div className="grid grid-cols-12 text-xs font-semibold text-gray-600 border-b p-2 min-w-[980px]">
+                <div className="col-span-1">Type</div>
                 <div className="col-span-2">Reason</div>
-                <div className="col-span-4">Details</div>
-                <div className="col-span-2">Status</div>
+                <div className="col-span-4">Offending Content</div>
+                <div className="col-span-2">Author</div>
+                <div className="col-span-1">Status</div>
                 <div className="col-span-2">Actions</div>
               </div>
-              {reportsLoading && <div className="p-6 text-center text-gray-500 text-sm">Loading…</div>}
-              {reportsError && <div className="p-6 text-center text-red-600 text-sm">{reportsError}</div>}
+              {reportsLoading && <div className="p-6 text-center text-gray-500 text-sm min-w-[720px]">Loading…</div>}
+              {reportsError && <div className="p-6 text-center text-red-600 text-sm min-w-[720px]">{reportsError}</div>}
               {!reportsLoading && !reportsError && (
                 <div>
-                  {reports.map((r) => (
-                    <div key={r._id} className="grid grid-cols-12 items-center text-sm p-2 border-b">
-                      <div className="col-span-2 uppercase text-gray-700">{r.targetType}</div>
-                      <div className="col-span-2 capitalize">{r.reason}</div>
-                      <div className="col-span-4 truncate" title={r.details}>{r.details || '-'}</div>
-                      <div className="col-span-2">
-                        <Badge variant={r.status === 'pending' ? 'destructive' : 'default'}>{r.status}</Badge>
+                  {reports.map((r) => {
+                    const isComment = r.targetType === 'comment';
+                    const comment = r.context?.comment;
+                    const author = comment?.author;
+                    const projectId = comment?.projectId;
+                    const contentPreview = (comment?.content || r.details || '').trim();
+
+                    return (
+                      <div key={r._id} className="grid grid-cols-12 items-center text-sm p-2 border-b min-w-[980px]">
+                        <div className="col-span-1 uppercase text-gray-700">{r.targetType}</div>
+                        <div className="col-span-2 capitalize">{r.reason}</div>
+                        <div className="col-span-4">
+                          <div className="line-clamp-2 text-gray-800" title={contentPreview}>
+                            {contentPreview || '-'}
+                          </div>
+                          {isComment && projectId && comment?._id && (
+                            <Link href={`/forum/project/${projectId}?commentId=${comment._id}`} className="text-indigo-600 text-xs hover:underline">
+                              View in context
+                            </Link>
+                          )}
+                        </div>
+                        <div className="col-span-2">
+                          {author ? (
+                            <div className="flex items-center gap-2">
+                              {author.profileImage && (
+                                <img src={author.profileImage} alt="avatar" className="w-5 h-5 rounded-full" />
+                              )}
+                              <span className="text-gray-700">{author.fullName || author.username}</span>
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </div>
+                        <div className="col-span-1">
+                          <Badge variant={r.status === 'pending' ? 'destructive' : 'default'}>{r.status}</Badge>
+                        </div>
+                        <div className="col-span-2 flex gap-2 items-center">
+                          <Select onValueChange={async (val) => {
+                            try {
+                              const res = await reportsApi.updateReport(r._id, { status: val as any });
+                              if (res.success) {
+                                setReports((prev) => prev.map(x => x._id === r._id ? { ...x, status: val } : x));
+                              }
+                            } catch (e) {}
+                          }}>
+                            <SelectTrigger className="h-8">
+                              <SelectValue placeholder={r.status || 'Update status'} />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="pending">Pending</SelectItem>
+                              <SelectItem value="reviewed">Reviewed</SelectItem>
+                              <SelectItem value="action_taken">Action Taken</SelectItem>
+                              <SelectItem value="dismissed">Dismissed</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          {isComment && comment?._id && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  const res = await commentsApi.adminDeleteComment(comment._id);
+                                  if (res.success) {
+                                    toast({ title: 'Comment removed', description: 'The offending comment was removed.' });
+                                    // Reflect action in UI by marking context as deleted and status as action_taken
+                                    setReports((prev) => prev.map(x => x._id === r._id ? { ...x, status: 'action_taken', context: { ...x.context, comment: { ...x.context?.comment, isDeleted: true } } } : x));
+                                  } else {
+                                    throw new Error(res.error || 'Failed to delete comment');
+                                  }
+                                } catch (e: any) {
+                                  toast({ title: 'Delete failed', description: e.message || 'Could not delete comment', variant: 'destructive' });
+                                }
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                        </div>
                       </div>
-                      <div className="col-span-2 flex gap-2">
-                        <Select onValueChange={async (val) => {
-                          try {
-                            const res = await reportsApi.updateReport(r._id, { status: val as any });
-                            if (res.success) {
-                              setReports((prev) => prev.map(x => x._id === r._id ? { ...x, status: val } : x));
-                            }
-                          } catch (e) {}
-                        }}>
-                          <SelectTrigger className="h-8">
-                            <SelectValue placeholder={r.status || 'Update status'} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="pending">Pending</SelectItem>
-                            <SelectItem value="reviewed">Reviewed</SelectItem>
-                            <SelectItem value="action_taken">Action Taken</SelectItem>
-                            <SelectItem value="dismissed">Dismissed</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                   {reports.length === 0 && (
                     <div className="p-6 text-center text-gray-500 text-sm">No reports yet.</div>
                   )}

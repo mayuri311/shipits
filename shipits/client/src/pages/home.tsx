@@ -39,7 +39,7 @@ export default function Home() {
             <h2 className="text-xl font-semibold mb-4 flex items-center gap-2"><Award className="w-5 h-5 text-yellow-500" /> Trending Contributors</h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {leaderboard.map((u) => (
-                <div key={u._id} className="border border-gray-200 rounded-lg p-4 bg-white flex items-center gap-3">
+                <div key={u._id} className="border border-gray-200 rounded-lg p-4 bg-white flex items-center gap-3 min-w-0">
                   {u.profileImage ? (
                     <img src={u.profileImage} className="w-10 h-10 rounded-full object-cover" />
                   ) : (

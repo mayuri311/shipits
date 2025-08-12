@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { 
   BarChart3, Bell, Calendar, Eye, Heart, MessageSquare, 
   Plus, Settings, TrendingUp, Users, ChevronRight, Trash2,
-  ExternalLink, Clock, Star, User as UserIcon, Activity, Menu, X
+  ExternalLink, Clock, Star, User as UserIcon, Activity, Menu, X, Pin
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -13,7 +13,8 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useAuth } from "@/contexts/AuthContext";
-import { dashboardApi, notificationsApi } from "@/lib/api";
+import { dashboardApi, notificationsApi, onboardingApi } from "@/lib/api";
+import TipCallout from "@/components/TipCallout";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { formatDistanceToNow } from "date-fns";
@@ -79,6 +80,8 @@ export default function Dashboard() {
   const isMobile = useIsMobile();
   const [activeTab, setActiveTab] = useState("overview");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [pinnedStats, setPinnedStats] = useState<string[]>(() => (currentUser as any)?.dashboardPreferences?.pinnedStats || []);
+  const [pinnedProjectIds, setPinnedProjectIds] = useState<string[]>(() => (currentUser as any)?.dashboardPreferences?.pinnedProjectIds?.map((id:any)=>String(id)) || []);
 
   // Get dashboard data
   const { data: dashboardData, isLoading: isDashboardLoading } = useQuery({
@@ -144,6 +147,20 @@ export default function Dashboard() {
   }
 
   const { user, projects, statistics, recentActivity } = dashboard;
+
+  const togglePinStat = async (key: string) => {
+    const next = pinnedStats.includes(key) ? pinnedStats.filter(k => k !== key) : [...pinnedStats, key];
+    setPinnedStats(next);
+    try { await onboardingApi.saveDashboardPins(user._id!.toString(), { pinnedProjectIds, pinnedStats: next }); } catch {}
+  };
+
+  const togglePinProject = async (id?: any) => {
+    if (!id) return;
+    const sid = String(id);
+    const next = pinnedProjectIds.includes(sid) ? pinnedProjectIds.filter(x => x !== sid) : [...pinnedProjectIds, sid];
+    setPinnedProjectIds(next);
+    try { await onboardingApi.saveDashboardPins(user._id!.toString(), { pinnedProjectIds: next, pinnedStats }); } catch {}
+  };
 
   const getNotificationIcon = (type: string) => {
     switch (type) {
@@ -268,6 +285,18 @@ export default function Dashboard() {
             </div>
           </div>
 
+          {/* Contextual tip for first-time users */}
+          {!(currentUser as any)?.onboarding?.completed && (
+            <div className="mb-4">
+              <TipCallout
+                id="dash-intro"
+                title="Pin what matters"
+                description="Click the pin on a stat or project to keep it at the top of your dashboard."
+                onDismiss={async () => { try { await onboardingApi.dismissTip(user._id!.toString(), 'dash-intro'); } catch {} }}
+              />
+            </div>
+          )}
+
           {/* Stats Cards */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
             <Card>
@@ -277,7 +306,15 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-gray-600">Projects Created</p>
                     <p className="text-2xl font-bold text-gray-900">{statistics.totalProjectsCreated}</p>
                   </div>
-                  <BarChart3 className="h-8 w-8 text-blue-500" />
+                  <div className="flex items-center gap-2">
+                    <BarChart3 className="h-8 w-8 text-blue-500" />
+                    <button title="Pin"
+                      onClick={() => togglePinStat('totalProjectsCreated')}
+                      className={`p-1 rounded ${pinnedStats.includes('totalProjectsCreated') ? 'text-maroon' : 'text-gray-400 hover:text-gray-600'}`}
+                    >
+                      <Pin className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -289,7 +326,12 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-gray-600">Total Views</p>
                     <p className="text-2xl font-bold text-gray-900">{statistics.totalProjectViews.toLocaleString()}</p>
                   </div>
-                  <Eye className="h-8 w-8 text-green-500" />
+                  <div className="flex items-center gap-2">
+                    <Eye className="h-8 w-8 text-green-500" />
+                    <button title="Pin" onClick={() => togglePinStat('totalProjectViews')} className={`p-1 rounded ${pinnedStats.includes('totalProjectViews') ? 'text-maroon' : 'text-gray-400 hover:text-gray-600'}`}>
+                      <Pin className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -301,7 +343,12 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-gray-600">Likes Received</p>
                     <p className="text-2xl font-bold text-gray-900">{statistics.totalLikesReceived}</p>
                   </div>
-                  <Heart className="h-8 w-8 text-red-500" />
+                  <div className="flex items-center gap-2">
+                    <Heart className="h-8 w-8 text-red-500" />
+                    <button title="Pin" onClick={() => togglePinStat('totalLikesReceived')} className={`p-1 rounded ${pinnedStats.includes('totalLikesReceived') ? 'text-maroon' : 'text-gray-400 hover:text-gray-600'}`}>
+                      <Pin className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -313,7 +360,12 @@ export default function Dashboard() {
                     <p className="text-sm font-medium text-gray-600">Comments Posted</p>
                     <p className="text-2xl font-bold text-gray-900">{statistics.totalCommentsPosted}</p>
                   </div>
-                  <MessageSquare className="h-8 w-8 text-purple-500" />
+                  <div className="flex items-center gap-2">
+                    <MessageSquare className="h-8 w-8 text-purple-500" />
+                    <button title="Pin" onClick={() => togglePinStat('totalCommentsPosted')} className={`p-1 rounded ${pinnedStats.includes('totalCommentsPosted') ? 'text-maroon' : 'text-gray-400 hover:text-gray-600'}`}>
+                      <Pin className="h-4 w-4" />
+                    </button>
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -440,6 +492,9 @@ export default function Dashboard() {
                           <MessageSquare className="h-4 w-4" />
                           {project.analytics?.totalComments || 0} comments
                         </span>
+                        <button title="Pin project" onClick={() => togglePinProject(project._id)} className={`ml-2 p-1 rounded ${pinnedProjectIds.includes(String(project._id)) ? 'text-maroon' : 'text-gray-400 hover:text-gray-600'}`}>
+                          <Pin className="h-4 w-4" />
+                        </button>
                       </div>
                       <div className="flex gap-2">
                         <Link href={`/forum/project/${project._id}`} className="flex-1">

@@ -13,6 +13,11 @@ export interface IMessage extends Document {
   }>;
   mentions?: Types.ObjectId[];
   readBy: Types.ObjectId[];
+  edited?: boolean;
+  editHistory?: Array<{ content: string; editedAt: Date }>;
+  isDeleted?: boolean;
+  deletedAt?: Date;
+  deletedBy?: Types.ObjectId;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -46,6 +51,15 @@ const MessageSchema = new Schema<IMessage>({
   attachments: [AttachmentSchema],
   mentions: [{ type: Schema.Types.ObjectId, ref: 'User' }],
   readBy: [{ type: Schema.Types.ObjectId, ref: 'User', index: true }],
+  edited: { type: Boolean, default: false },
+  editHistory: [{
+    content: { type: String },
+    editedAt: { type: Date, default: Date.now },
+    _id: false,
+  }],
+  isDeleted: { type: Boolean, default: false },
+  deletedAt: { type: Date },
+  deletedBy: { type: Schema.Types.ObjectId, ref: 'User' },
 }, {
   timestamps: true,
   toJSON: { virtuals: true },

@@ -65,6 +65,28 @@ export const userSchema = z.object({
   role: z.enum(['user', 'moderator', 'admin']).default('user'),
   isFollowersListPublic: z.boolean().default(true).optional(),
   isFollowingListPublic: z.boolean().default(true).optional(),
+  onboarding: z.object({
+    completed: z.boolean().default(false),
+    version: z.number().default(1).optional(),
+    stepsCompleted: z.array(z.string()).default([]).optional(),
+    completedAt: z.date().nullable().optional(),
+  }).optional(),
+  uiTips: z.object({
+    dismissed: z.array(z.string()).default([]),
+  }).optional(),
+  dashboardPreferences: z.object({
+    pinnedProjectIds: z.array(z.instanceof(Types.ObjectId)).default([]).optional(),
+    pinnedStats: z.array(z.enum(['totalProjectViews','totalLikesReceived','totalCommentsPosted','totalProjectsCreated','unreadNotifications'])).default([]).optional(),
+    layout: z.enum(['standard','compact','cards']).default('standard'),
+  }).optional(),
+  lastAiPersonalization: z.object({
+    preset: z.string().default('default'),
+    accentColor: z.enum(['blue','purple','green','orange','red','pink']).default('blue'),
+    mode: z.enum(['light','dark','system']).default('system'),
+    layout: z.enum(['standard','compact','cards']).default('standard'),
+    reason: z.string().optional(),
+    generatedAt: z.date().default(() => new Date()),
+  }).optional(),
   // Email verification
   emailVerified: z.boolean().default(false).optional(),
   emailVerificationToken: z.string().optional().nullable(),
@@ -297,6 +319,14 @@ export const messageSchema = z.object({
   })).optional(),
   mentions: z.array(z.instanceof(Types.ObjectId)).optional(),
   readBy: z.array(z.instanceof(Types.ObjectId)).optional(),
+  edited: z.boolean().default(false).optional(),
+  editHistory: z.array(z.object({
+    content: z.string(),
+    editedAt: z.date(),
+  })).optional(),
+  isDeleted: z.boolean().default(false).optional(),
+  deletedAt: z.date().optional(),
+  deletedBy: z.instanceof(Types.ObjectId).optional(),
   createdAt: z.date().optional(),
   updatedAt: z.date().optional(),
 });

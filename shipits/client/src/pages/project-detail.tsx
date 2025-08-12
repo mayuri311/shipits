@@ -254,6 +254,23 @@ export default function ProjectDetail() {
     }
   }, [id, isAuthenticated]);
 
+  // After comments load, support deep-link to a specific comment via ?commentId=
+  useEffect(() => {
+    const url = new URL(window.location.href);
+    const jumpToCommentId = url.searchParams.get('commentId');
+    if (jumpToCommentId) {
+      // slight delay to ensure DOM is rendered
+      setTimeout(() => {
+        const el = document.getElementById(`comment-${jumpToCommentId}`);
+        if (el) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          el.classList.add('ring-2', 'ring-orange-400');
+          setTimeout(() => el.classList.remove('ring-2', 'ring-orange-400'), 2000);
+        }
+      }, 300);
+    }
+  }, [comments.length]);
+
   const fetchProject = async () => {
     try {
       setLoading(true);

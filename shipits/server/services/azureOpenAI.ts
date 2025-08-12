@@ -426,6 +426,48 @@ Target language: ${targetLanguage}`;
   }
 
   /**
+   * Suggest UI personalization: theme preset, accent color, mode, and layout
+   */
+  async suggestThemeAndLayout(input: {
+    usageSignals: Array<{ name: string; value: number }>;
+    preferences?: Partial<{ prefersDark: boolean; prefersReducedMotion: boolean; highContrast: boolean }>;
+    current?: Partial<{ preset: string; accentColor: string; mode: string; layout: string }>;
+  }): Promise<{ preset: string; accentColor: 'blue'|'purple'|'green'|'orange'|'red'|'pink'; mode: 'light'|'dark'|'system'; layout: 'standard'|'compact'|'cards'; reason?: string }>
+  {
+    try {
+      if (!this.client) {
+        return { preset: 'default', accentColor: 'blue', mode: 'system', layout: 'standard', reason: 'Fallback defaults' } as any;
+      }
+
+      const system = `You are a UI personalization assistant. Based on usage signals and accessibility prefs, pick a theme preset, accent color, mode, and layout. Reply ONLY JSON with keys preset, accentColor, mode, layout, reason. Allowed accentColor: blue,purple,green,orange,red,pink. Allowed mode: light,dark,system. Allowed layout: standard,compact,cards.`;
+
+      const user = `USAGE_SIGNALS: ${JSON.stringify(input.usageSignals)}\nPREFERENCES: ${JSON.stringify(input.preferences || {})}\nCURRENT: ${JSON.stringify(input.current || {})}\nReturn strict JSON.`;
+
+      const resp = await this.client.chat.completions.create({
+        model: this.deploymentName,
+        messages: [
+          { role: 'system', content: system },
+          { role: 'user', content: user },
+        ],
+        temperature: 0.2,
+        max_tokens: 160,
+      });
+      const raw = resp.choices[0]?.message?.content?.trim() || '';
+      const parsed = AzureOpenAIService.safeJsonParse(raw) || {};
+      const out = {
+        preset: typeof parsed.preset === 'string' ? parsed.preset : 'default',
+        accentColor: ['blue','purple','green','orange','red','pink'].includes(parsed.accentColor) ? parsed.accentColor : 'blue',
+        mode: ['light','dark','system'].includes(parsed.mode) ? parsed.mode : 'system',
+        layout: ['standard','compact','cards'].includes(parsed.layout) ? parsed.layout : 'standard',
+        reason: typeof parsed.reason === 'string' ? parsed.reason : undefined,
+      } as any;
+      return out;
+    } catch (error) {
+      return { preset: 'default', accentColor: 'blue', mode: 'system', layout: 'standard', reason: 'Error, using defaults' } as any;
+    }
+  }
+
+  /**
    * Suggest tags based on project content (title, description), updates, and comments
    */
   async suggestTags(input: {

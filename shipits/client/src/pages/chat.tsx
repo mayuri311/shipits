@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Link } from 'wouter';
 import { Input } from '@/components/ui/input';
 import TranslatedMarkdown from '@/components/TranslatedMarkdown';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 
 export default function ChatPage() {
   const { user, isAuthenticated } = useAuth();
@@ -55,6 +56,10 @@ export default function ChatPage() {
         const payload = JSON.parse(ev.data);
         if (payload?.type === 'message' && payload.data?.message) {
           setMessages((prev) => [...prev, payload.data.message]);
+        } else if (payload?.type === 'message_edited' && payload.data?.message) {
+          setMessages((prev) => prev.map((m) => String(m._id) === String(payload.data.message._id) ? payload.data.message : m));
+        } else if (payload?.type === 'message_deleted' && payload.data?.messageId) {
+          setMessages((prev) => prev.map((m) => String(m._id) === String(payload.data.messageId) ? { ...m, isDeleted: true, content: '' } : m));
         }
       } catch {}
     });
@@ -110,16 +115,62 @@ export default function ChatPage() {
   const startDm = async (targetId: string) => {
     const res = await chatApi.createConversation({ type: 'dm', participants: [targetId] } as any);
     if (res.success && res.data) {
-      setConversations((prev) => [res.data.conversation, ...prev]);
-      setActiveId(String(res.data.conversation._id));
+      const conv = res.data.conversation;
+      // Always refresh populated participants
+      try {
+        const fresh = await chatApi.getConversation(String(conv._id));
+        const finalConv = fresh.success && fresh.data ? fresh.data.conversation : conv;
+        setConversations((prev) => {
+          const exists = prev.some((c) => String(c._id) === String(finalConv._id));
+          return exists ? prev.map((c) => String(c._id) === String(finalConv._id) ? finalConv : c) : [finalConv, ...prev];
+        });
+      } catch {
+        setConversations((prev) => {
+          const exists = prev.some((c) => String(c._id) === String(conv._id));
+          return exists ? prev : [conv, ...prev];
+        });
+      }
+      setActiveId(String(conv._id));
       setIsDmOpen(false);
       setUserQuery('');
       setUserResults([]);
     }
   };
 
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState('');
+
+  const beginEdit = (messageId: string, current: string) => {
+    setEditingId(String(messageId));
+    setEditDraft(current);
+  };
+  const saveEdit = async () => {
+    if (!editingId) return;
+    try {
+      const res = await chatApi.editMessage(String(editingId), editDraft);
+      if (res.success && res.data) {
+        setMessages((prev) => prev.map((m) => String(m._id) === String(editingId) ? res.data.message : m));
+        setEditingId(null);
+        setEditDraft('');
+      }
+    } catch (_e) {
+      // ignore
+    }
+  };
+  const cancelEdit = () => { setEditingId(null); setEditDraft(''); };
+  const removeMessage = async (messageId: string) => {
+    try {
+      const res = await chatApi.deleteMessage(String(messageId));
+      if (res.success) {
+        setMessages((prev) => prev.map((m) => String(m._id) === String(messageId) ? { ...m, isDeleted: true, content: '' } : m));
+      }
+    } catch (_e) {
+      // ignore
+    }
+  };
+
   return (
-    <div className="flex h-screen">
+    <div className="flex h-[100dvh] sm:h-screen">
       <div className="w-full sm:w-72 border-r p-3 space-y-2">
         <div className="flex items-center justify-between gap-2">
           <div className="font-semibold">Chats</div>
@@ -137,40 +188,99 @@ export default function ChatPage() {
           </div>
         </div>
         <div className="space-y-1 overflow-auto">
-          {conversations.map((c) => (
+          {conversations.map((c) => {
+            const other = (c.type === 'dm' && Array.isArray(c.participants)) ? c.participants.find((p: any) => String(p._id) !== String(user?._id)) : null;
+            const title = c.name || (c.type==='dm' ? (other?.fullName || other?.username || 'Direct Message') : 'Group Chat');
+            return (
             <button
               key={String(c._id)}
               onClick={() => { setActiveId(String(c._id)); setShowMessagesMobile(true); }}
               className={`w-full text-left px-2 py-1 rounded ${activeId===String(c._id)?'bg-muted':'hover:bg-muted'}`}
             >
-              <div className="text-sm font-medium">{c.name || (c.type==='dm' ? 'Direct Message' : 'Group Chat')}</div>
-              <div className="text-xs text-muted-foreground">{new Date(c.updatedAt).toLocaleString()}</div>
+              <div className="flex items-center gap-2">
+                {c.type==='dm' && other ? (
+                  <Avatar className="h-8 w-8">
+                    <AvatarImage src={other.profileImage || ''} />
+                    <AvatarFallback>{(other.fullName || other.username || '?').slice(0,2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                ) : null}
+                <div>
+                  <div className="text-sm font-medium">{title}</div>
+                  <div className="text-xs text-muted-foreground">{new Date((c.updatedAt||c.lastMessageAt||c.createdAt)).toLocaleString()}</div>
+                </div>
+              </div>
             </button>
-          ))}
+          );})}
         </div>
       </div>
-      <div className={`${showMessagesMobile ? 'flex' : 'hidden'} sm:flex flex-1 flex-col`}>
+      <div className={`${showMessagesMobile ? 'flex' : 'hidden'} sm:flex flex-1 flex-col`}> 
         {/* Mobile header with back button */}
-        <div className="sm:hidden border-b p-3 flex items-center gap-2">
+        <div className="sm:hidden border-b p-3 flex items-center gap-2 sticky top-0 bg-background z-10">
           <Button variant="ghost" onClick={() => setShowMessagesMobile(false)}>Back</Button>
-          <div className="font-medium">Conversation</div>
+          <div className="font-medium">
+            {(() => {
+              const c = conversations.find((x) => String(x._id) === String(activeId));
+              if (!c) return 'Conversation';
+              const other = (c.type === 'dm' && Array.isArray(c.participants)) ? c.participants.find((p: any) => String(p._id) !== String(user?._id)) : null;
+              return c.name || (c.type==='dm' ? (other?.fullName || other?.username || 'Direct Message') : 'Group Chat');
+            })()}
+          </div>
+        </div>
+        {/* Desktop header with recipient */}
+        <div className="hidden sm:flex border-b p-3 items-center gap-2 sticky top-0 bg-background z-10">
+          {(() => {
+            const c = conversations.find((x) => String(x._id) === String(activeId));
+            if (!c) return <div className="font-medium">Conversation</div>;
+            const other = (c.type === 'dm' && Array.isArray(c.participants)) ? c.participants.find((p: any) => String(p._id) !== String(user?._id)) : null;
+            return (
+              <div className="flex items-center gap-2">
+                {c.type==='dm' && other ? (
+                  <Avatar className="h-7 w-7">
+                    <AvatarImage src={other.profileImage || ''} />
+                    <AvatarFallback>{(other?.fullName || other?.username || '?').slice(0,2).toUpperCase()}</AvatarFallback>
+                  </Avatar>
+                ) : null}
+                <div className="font-medium">{c.name || (c.type==='dm' ? (other?.fullName || other?.username || 'Direct Message') : 'Group Chat')}</div>
+              </div>
+            );
+          })()}
         </div>
         <div className="flex-1 overflow-auto p-4 space-y-2">
           {messages.map((m) => (
-            <div key={m._id} className={`max-w-xl ${m.senderId===user?._id? 'ml-auto text-right':''}`}>
-              <div className="text-xs text-muted-foreground">{new Date(m.createdAt).toLocaleTimeString()}</div>
-              <div className="inline-block bg-secondary rounded px-3 py-2 text-left">
-                <TranslatedMarkdown
-                  sourceType="message"
-                  sourceId={String(m._id)}
-                  field="content"
-                  text={m.content || ''}
-                />
+            <div key={m._id} className={`group max-w-xl ${m.senderId===user?._id? 'ml-auto text-right':''}`}>
+              <div className="flex items-center gap-2 justify-between">
+                <div className="text-xs text-muted-foreground">{new Date(m.createdAt).toLocaleTimeString()} {m.edited && !m.isDeleted ? '(edited)' : ''}</div>
+                {m.senderId===user?._id && !m.isDeleted && (
+                  <div className="opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition flex gap-1">
+                    <Button size="sm" variant="ghost" onClick={() => beginEdit(m._id, m.content || '')}>Edit</Button>
+                    <Button size="sm" variant="ghost" onClick={() => removeMessage(m._id)}>Delete</Button>
+                  </div>
+                )}
+              </div>
+              <div className="inline-block bg-secondary rounded px-3 py-2 text-left w-full">
+                {editingId === m._id ? (
+                  <div className="flex items-center gap-2">
+                    <Input value={editDraft} onChange={(e) => setEditDraft(e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){ saveEdit(); } }} />
+                    <Button size="sm" onClick={saveEdit}>Save</Button>
+                    <Button size="sm" variant="ghost" onClick={cancelEdit}>Cancel</Button>
+                  </div>
+                ) : (
+                  m.isDeleted ? (
+                    <div className="text-muted-foreground text-sm italic">Message deleted</div>
+                  ) : (
+                    <TranslatedMarkdown
+                      sourceType="message"
+                      sourceId={String(m._id)}
+                      field="content"
+                      text={m.content || ''}
+                    />
+                  )
+                )}
               </div>
             </div>
           ))}
         </div>
-        <div className="border-t p-3 flex gap-2">
+        <div className="border-t p-3 flex gap-2 sticky bottom-0 bg-background">
           <Input placeholder="Type a message" value={draft} onChange={(e) => setDraft(e.target.value)} onKeyDown={(e)=>{ if(e.key==='Enter'){ send(); } }} />
           <Button onClick={send}>Send</Button>
         </div>

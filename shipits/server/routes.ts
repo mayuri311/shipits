@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import express from "express";
 import { createServer, type Server } from "http";
 import { mongoStorage } from "./services/mongoStorage";
@@ -10,6 +10,15 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { Types } from "mongoose";
 import mongoose from "mongoose";
+
+// Extend Express Request interface
+declare global {
+  namespace Express {
+    interface Request {
+      currentUser?: any;
+    }
+  }
+}
 // Simple in-memory rate limiter to avoid external deps in server build
 type RateRecord = { count: number; resetAt: number };
 const rateBuckets: Map<string, RateRecord> = new Map();
@@ -68,7 +77,7 @@ declare module 'express-session' {
 
 // Middleware for authentication
 const requireAuth = (req: any, res: any, next: any) => {
-  if (!req.session.userId) {
+  if (!req.session.userId!) {
     return res.status(401).json({ success: false, error: 'Authentication required' });
   }
   next();
@@ -153,15 +162,15 @@ function formatCommentsForAI(commentHierarchy: any[]): any[] {
 
 // Middleware for admin authentication
 const requireAdmin = async (req: any, res: any, next: any) => {
-  console.log('🔐 Admin auth check - Session userId:', req.session.userId);
+  console.log('🔐 Admin auth check - Session userId:', req.session.userId!);
   
-  if (!req.session.userId) {
+  if (!req.session.userId!) {
     console.log('❌ No session userId found');
     return res.status(401).json({ success: false, error: 'Authentication required' });
   }
   
   try {
-    const user = await mongoStorage.getUser(req.session.userId);
+    const user = await mongoStorage.getUser(req.session.userId!);
     console.log('👤 Found user:', user ? { id: user._id, username: user.username, role: user.role } : 'null');
     
     if (!user || user.role !== 'admin') {
@@ -172,7 +181,7 @@ const requireAdmin = async (req: any, res: any, next: any) => {
     console.log('✅ Admin access granted for:', user.username);
     req.currentUser = user;
     next();
-  } catch (error) {
+  } catch (error: any) {
     console.error('❌ Admin auth error:', error);
     res.status(500).json({ success: false, error: 'Authentication failed' });
   }
@@ -183,7 +192,7 @@ const validateBody = (schema: z.ZodSchema) => (req: any, res: any, next: any) =>
   try {
     req.body = schema.parse(req.body);
     next();
-  } catch (error) {
+  } catch (error: any) {
     if (error instanceof z.ZodError) {
       return res.status(400).json({ 
         success: false, 
@@ -304,7 +313,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { user: userResponse },
         message: 'Registration successful. Please verify your email before logging in.' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Registration error:', error);
       
       // Handle MongoDB validation errors
@@ -374,7 +383,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(403).json({ success: false, error: 'Email not verified. We’ve sent you a verification link.' });
       }
 
-      req.session.userId = user._id.toString();
+      req.session.userId = user._id?.toString();
       req.session.user = user;
 
       res.json({ 
@@ -382,7 +391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { user: { ...user, password: undefined } },
         message: 'Login successful' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Login error:', error);
       res.status(500).json({ success: false, error: 'Login failed' });
     }
@@ -398,12 +407,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   app.get('/api/auth/me', async (req, res) => {
-    if (!req.session.userId) {
+    if (!req.session.userId!) {
       return res.status(401).json({ success: false, error: 'Not authenticated' });
     }
 
     try {
-      const user = await mongoStorage.getUser(req.session.userId);
+      const user = await mongoStorage.getUser(req.session.userId!);
       if (!user) {
         req.session.destroy(() => {});
         return res.status(401).json({ success: false, error: 'User not found' });
@@ -413,7 +422,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         data: { user: { ...user, password: undefined } } 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get current user error:', error);
       res.status(500).json({ success: false, error: 'Failed to get user info' });
     }
@@ -565,7 +574,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       };
 
       res.json(response);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get projects error:', error);
       res.status(500).json({ success: false, error: 'Failed to get projects' });
     }
@@ -607,7 +616,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       ]);
 
       res.json({ success: true, data: { projects: projectMatches, tags: tagMatches, users: userMatches } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Autocomplete error:', error);
       res.status(500).json({ success: false, error: 'Failed to get suggestions' });
     }
@@ -621,7 +630,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { azureOpenAIService } = await import('./services/azureOpenAI');
       const suggestion = await azureOpenAIService.suggestQueryCorrections(q);
       res.json({ success: true, data: suggestion });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Did you mean error:', error);
       res.status(200).json({ success: true, data: {} });
     }
@@ -660,7 +669,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
       res.json({ success: true, data: { updated } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Embeddings reindex error:', error);
       res.status(500).json({ success: false, error: 'Failed to reindex embeddings' });
     }
@@ -670,7 +679,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const projects = await mongoStorage.getFeaturedProjects();
       res.json({ success: true, data: { projects } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get featured projects error:', error);
       res.status(500).json({ success: false, error: 'Failed to get featured projects' });
     }
@@ -681,7 +690,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const projects = await mongoStorage.getTrendingProjects();
       res.json({ success: true, data: { projects } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get trending projects error:', error);
       res.status(500).json({ success: false, error: 'Failed to get trending projects' });
     }
@@ -690,14 +699,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/projects/:id', async (req, res) => {
     try {
       // Pass the authenticated user ID for view tracking if available
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       const project = await mongoStorage.getProject(req.params.id, userId);
       if (!project) {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
       res.json({ success: true, data: { project } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get project error:', error);
       res.status(500).json({ success: false, error: 'Failed to get project' });
     }
@@ -717,7 +726,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const report = await Report.create({
-        reporterId: new Types.ObjectId(req.session.userId),
+        reporterId: new Types.ObjectId(req.session.userId!),
         targetType,
         targetId: objId,
         reason,
@@ -726,13 +735,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         autoFlagged: false,
       });
       res.status(201).json({ success: true, data: { reportId: report._id } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create report error:', error);
       res.status(500).json({ success: false, error: 'Failed to submit report' });
     }
   });
 
-  // Admin - list reports
+  // Admin - list reports (enriched with context for comment/project/user)
   app.get('/api/admin/reports', requireAdmin, async (req, res) => {
     try {
       const page = parseInt((req.query.page as string) || '1');
@@ -744,14 +753,66 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (targetType) filter.targetType = targetType;
 
       const total = await Report.countDocuments(filter);
-      const items = await Report.find(filter)
+      const rawItems = await Report.find(filter)
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
         .lean();
 
+      // Enrich reports with minimal context to aid moderation UI
+      const items = await Promise.all(rawItems.map(async (r: any) => {
+        try {
+          if (r.targetType === 'comment') {
+            const comment = await Comment.findById(r.targetId)
+              .populate('authorId', 'username fullName profileImage')
+              .lean();
+            if (comment) {
+              return {
+                ...r,
+                context: {
+                  comment: {
+                    _id: comment._id,
+                    content: comment.content,
+                    projectId: comment.projectId,
+                    author: comment.authorId,
+                    isDeleted: !!comment.isDeleted,
+                  }
+                }
+              };
+            }
+          } else if (r.targetType === 'project') {
+            const project = await Project.findById(r.targetId).select('title ownerId').populate('ownerId', 'username fullName').lean();
+            if (project) {
+              return {
+                ...r,
+                context: {
+                  project: {
+                    _id: project._id,
+                    title: project.title,
+                    owner: project.ownerId,
+                  }
+                }
+              };
+            }
+          } else if (r.targetType === 'user') {
+            const user = await User.findById(r.targetId).select('username fullName profileImage').lean();
+            if (user) {
+              return {
+                ...r,
+                context: {
+                  user
+                }
+              };
+            }
+          }
+        } catch (e) {
+          // fall through and return raw report if enrichment fails
+        }
+        return r;
+      }));
+
       res.json({ success: true, data: { items, total, page, limit, totalPages: Math.ceil(total / limit) } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('List reports error:', error);
       res.status(500).json({ success: false, error: 'Failed to fetch reports' });
     }
@@ -763,12 +824,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { status, adminNotes } = req.body;
       const report = await Report.findByIdAndUpdate(
         req.params.id,
-        { status, adminNotes, processedBy: new Types.ObjectId(req.currentUser._id) },
+        { status, adminNotes, processedBy: new Types.ObjectId(req.currentUser?._id) },
         { new: true }
       );
       if (!report) return res.status(404).json({ success: false, error: 'Report not found' });
       res.json({ success: true, data: { report } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Update report error:', error);
       res.status(500).json({ success: false, error: 'Failed to update report' });
     }
@@ -778,7 +839,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const projectData = {
         ...req.body,
-        ownerId: req.session.userId
+        ownerId: req.session.userId!
       };
 
       const project = await mongoStorage.createProject(projectData);
@@ -788,7 +849,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (hasSuspicious) {
         try {
           await Report.create({
-            reporterId: new Types.ObjectId(req.session.userId as string),
+            reporterId: new Types.ObjectId(req.session.userId! as string),
             targetType: 'project',
             targetId: new Types.ObjectId(project._id),
             reason: 'spam',
@@ -806,7 +867,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { project },
         message: 'Project created successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create project error:', error);
       res.status(500).json({ success: false, error: 'Failed to create project' });
     }
@@ -815,7 +876,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update project (for project owners)
   app.put('/api/projects/:id', requireAuth, async (req, res) => {
     try {
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
@@ -826,7 +887,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user owns the project or is admin
-      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+      if (project.ownerId._id.toString() !== req.session.userId! && currentUser.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
@@ -843,7 +904,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { project: updatedProject },
         message: 'Project updated successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Update project error:', error);
       if (error.name === 'ZodError') {
         return res.status(400).json({ success: false, error: 'Invalid project data', details: error.errors });
@@ -854,7 +915,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/projects/:id', requireAuth, async (req, res) => {
     try {
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
@@ -865,11 +926,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user owns the project or is admin
-      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+      if (project.ownerId._id.toString() !== req.session.userId! && currentUser.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
-      const deleted = await mongoStorage.deleteProject(req.params.id, req.session.userId);
+      const deleted = await mongoStorage.deleteProject(req.params.id, req.session.userId!!);
       if (!deleted) {
         return res.status(404).json({ success: false, error: 'Project not found or already deleted' });
       }
@@ -878,7 +939,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: 'Project deleted successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete project error:', error);
       res.status(500).json({ success: false, error: 'Failed to delete project' });
     }
@@ -900,7 +961,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: 'Project deleted by admin successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin delete project error:', error);
       res.status(500).json({ success: false, error: 'Failed to delete project' });
     }
@@ -909,38 +970,38 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Project Like Routes - Toggle like status
   app.post('/api/projects/:id/like', requireAuth, async (req, res) => {
     try {
-      console.log('Toggling project like:', { projectId: req.params.id, userId: req.session.userId });
+      console.log('Toggling project like:', { projectId: req.params.id, userId: req.session.userId! });
       
-      const project = await mongoStorage.getProject(req.params.id);
+      const project = await Project.findById(req.params.id);
       if (!project) {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
-      const userId = new Types.ObjectId(req.session.userId);
-      const isCurrentlyLiked = project.likes.some(id => id.equals(userId));
+      const userId = new Types.ObjectId(req.session.userId!!);
+      const isCurrentlyLiked = project.likes?.some(id => id.equals(userId)) || false;
       
       if (isCurrentlyLiked) {
         await project.removeLike(userId);
-        console.log('Project unliked:', { projectId: req.params.id, totalLikes: project.analytics.totalLikes });
+        console.log('Project unliked:', { projectId: req.params.id, totalLikes: project.analytics?.totalLikes });
         
         res.json({ 
           success: true, 
           data: { 
-            totalLikes: project.analytics.totalLikes,
+            totalLikes: project.analytics?.totalLikes || 0,
             isLiked: false 
           },
           message: 'Project unliked successfully' 
         });
       } else {
         await project.addLike(userId);
-        console.log('Project liked:', { projectId: req.params.id, totalLikes: project.analytics.totalLikes });
+        console.log('Project liked:', { projectId: req.params.id, totalLikes: project.analytics?.totalLikes });
         
         // Create notification for project owner (if not self-like)
         try {
           await Notification.createProjectLikeNotification(
             new Types.ObjectId(req.params.id),
             userId,
-            project.ownerId._id
+            project.ownerId
           );
         } catch (notificationError) {
           console.error('Failed to create like notification:', notificationError);
@@ -950,13 +1011,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         res.json({ 
           success: true, 
           data: { 
-            totalLikes: project.analytics.totalLikes,
+            totalLikes: project.analytics?.totalLikes || 0,
             isLiked: true 
           },
           message: 'Project liked successfully' 
         });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Toggle project like error:', error);
       res.status(500).json({ success: false, error: 'Failed to toggle project like' });
     }
@@ -964,29 +1025,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/projects/:id/like', requireAuth, async (req, res) => {
     try {
-      console.log('Unliking project:', { projectId: req.params.id, userId: req.session.userId });
+      console.log('Unliking project:', { projectId: req.params.id, userId: req.session.userId! });
       
-      const project = await mongoStorage.getProject(req.params.id);
+      const project = await Project.findById(req.params.id);
       if (!project) {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
-      await project.removeLike(new Types.ObjectId(req.session.userId));
+      await project.removeLike(new Types.ObjectId(req.session.userId!!));
       
       console.log('Project unliked successfully:', { 
         projectId: req.params.id, 
-        totalLikes: project.analytics.totalLikes 
+        totalLikes: project.analytics?.totalLikes 
       });
       
       res.json({ 
         success: true, 
         data: { 
-          totalLikes: project.analytics.totalLikes,
+          totalLikes: project.analytics?.totalLikes || 0,
           isLiked: false 
         },
         message: 'Project unliked successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Unlike project error:', error);
       res.status(500).json({ success: false, error: 'Failed to unlike project' });
     }
@@ -1009,8 +1070,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Test with a simple conversation
       const testComments = [
-        { content: 'This project looks interesting!', authorName: 'TestUser1', createdAt: new Date() },
-        { content: 'I agree, the UI design is really clean.', authorName: 'TestUser2', createdAt: new Date() }
+        { content: 'This project looks interesting!', authorName: 'TestUser1', createdAt: new Date(), type: 'comment' as const },
+        { content: 'I agree, the UI design is really clean.', authorName: 'TestUser2', createdAt: new Date(), type: 'comment' as const }
       ];
       
       const summary = await azureOpenAIService.generateThreadSummary(testComments);
@@ -1056,7 +1117,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
-      const summary = await ThreadSummary.findByProject(req.params.id);
+      const summary = await ThreadSummary.findOne({ projectId: new Types.ObjectId(req.params.id) });
       
       if (!summary) {
         return res.json({ 
@@ -1074,7 +1135,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           hasSummary: true
         } 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get thread summary error:', error);
       res.status(500).json({ success: false, error: 'Failed to get thread summary' });
     }
@@ -1132,7 +1193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if we need to generate/update summary
-      const existingSummary = await ThreadSummary.findByProject(req.params.id);
+      const existingSummary = await ThreadSummary.findOne({ projectId: new Types.ObjectId(req.params.id) });
       
       // Find the latest activity (comment or update)
       const latestComment = comments.length > 0 ? 
@@ -1142,7 +1203,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       
       const totalActivityCount = comments.length + updates.length;
       const latestActivityId = latestComment && latestUpdate ? 
-        (new Date(latestComment.createdAt) > new Date(latestUpdate.createdAt) ? latestComment._id : latestUpdate._id) :
+        (new Date(latestComment.createdAt || 0) > new Date(latestUpdate.createdAt || 0) ? latestComment._id : latestUpdate._id) :
         (latestComment?._id || latestUpdate?._id);
 
       if (existingSummary && latestActivityId && !existingSummary.needsUpdate(totalActivityCount, latestActivityId)) {
@@ -1164,8 +1225,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         description: project.description,
         tags: project.tags || [],
         status: project.status,
-        ownerName: project.ownerId?.fullName || project.ownerId?.username || 'Unknown',
-        createdAt: new Date(project.createdAt),
+        ownerName: 'Project Owner',
+        createdAt: new Date(project.createdAt || 0),
         updateCount: updates.length,
         commentCount: comments.length
       };
@@ -1175,7 +1236,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         title: update.title,
         content: update.content,
         createdAt: new Date(update.createdAt),
-        type: 'update'
+        type: 'update' as const
       }));
 
       // Prepare comments for AI processing
@@ -1183,7 +1244,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content: comment.content,
         authorName: comment.authorId?.fullName || comment.authorId?.username || 'Anonymous',
         createdAt: new Date(comment.createdAt),
-        type: 'comment'
+        type: 'comment' as const
       }));
 
       // Combine updates and comments chronologically for comprehensive context
@@ -1200,11 +1261,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Save summary to database
-      const savedSummary = await ThreadSummary.createOrUpdate(
-        req.params.id,
-        generatedSummary,
-        totalActivityCount,
-        latestActivityId
+      const savedSummary = await ThreadSummary.findOneAndUpdate(
+        { projectId: new Types.ObjectId(req.params.id) },
+        {
+          summary: generatedSummary,
+          commentCount: totalActivityCount,
+          lastCommentId: latestActivityId,
+          lastUpdated: new Date()
+        },
+        {
+          upsert: true,
+          new: true,
+          runValidators: true
+        }
       );
 
       res.json({ 
@@ -1219,7 +1288,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         message: 'Thread summary generated successfully' 
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Generate thread summary error:', error);
       
       // Return appropriate error based on the type
@@ -1253,7 +1322,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ success: false, error: 'AI service not configured' });
       }
 
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
@@ -1264,7 +1333,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Allow project owners and admins to request suggestions
-      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+      if (project.ownerId._id.toString() !== req.session.userId! && currentUser.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
@@ -1286,7 +1355,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ success: true, data: { suggestions, project: updated } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Suggest tags error:', error);
       res.status(500).json({ success: false, error: 'Failed to suggest tags' });
     }
@@ -1308,7 +1377,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(503).json({ success: false, error: 'AI service not configured' });
       }
 
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
@@ -1319,7 +1388,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Only owners or admins can run improvements for a project
-      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+      if (project.ownerId._id.toString() !== req.session.userId! && currentUser.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
@@ -1332,7 +1401,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ success: true, data: result });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Improve description error:', error);
       res.status(500).json({ success: false, error: 'Failed to improve description' });
     }
@@ -1341,7 +1410,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI: Manually set or regenerate project AI summary (owner/admin), independent of thread summary cache
   app.post('/api/projects/:id/summary/save', requireAuth, async (req, res) => {
     try {
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
@@ -1351,7 +1420,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
-      if (project.ownerId._id.toString() !== req.session.userId && currentUser.role !== 'admin') {
+      if (project.ownerId._id.toString() !== req.session.userId! && currentUser.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
@@ -1366,7 +1435,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       res.json({ success: true, data: { project: updated } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Save AI summary error:', error);
       res.status(500).json({ success: false, error: 'Failed to save AI summary' });
     }
@@ -1376,7 +1445,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/projects/:id/share', async (req, res) => {
     try {
       const { platform } = req.body;
-      const userId = req.session.userId;
+      const userId = req.session.userId!;
       
       if (!platform) {
         return res.status(400).json({ success: false, error: 'Platform is required' });
@@ -1395,7 +1464,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: 'Share recorded successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Record share error:', error);
       res.status(500).json({ success: false, error: 'Failed to record share' });
     }
@@ -1405,21 +1474,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/comments/:id/reaction', requireAuth, async (req, res) => {
     try {
       const { type = 'like' } = req.body;
-      console.log('Adding reaction:', { commentId: req.params.id, userId: req.session.userId, type });
+      console.log('Adding reaction:', { commentId: req.params.id, userId: req.session.userId!, type });
       
-      const comment = await mongoStorage.getComment(req.params.id);
+      const comment = await Comment.findById(req.params.id);
       if (!comment) {
         return res.status(404).json({ success: false, error: 'Comment not found' });
       }
 
-      await comment.addReaction(new Types.ObjectId(req.session.userId), type);
+      await comment.addReaction(new Types.ObjectId(req.session.userId!!), type);
       
       // Create notification for comment author if it's a like
       if (type === 'like') {
         try {
           await Notification.createCommentLikeNotification(
             new Types.ObjectId(req.params.id),
-            new Types.ObjectId(req.session.userId),
+            new Types.ObjectId(req.session.userId!),
             comment.authorId,
             comment.projectId
           );
@@ -1445,7 +1514,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         message: 'Reaction added successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Add reaction error:', error);
       res.status(500).json({ success: false, error: 'Failed to add reaction' });
     }
@@ -1453,14 +1522,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/comments/:id/reaction', requireAuth, async (req, res) => {
     try {
-      console.log('Removing reaction:', { commentId: req.params.id, userId: req.session.userId });
+      console.log('Removing reaction:', { commentId: req.params.id, userId: req.session.userId! });
       
-      const comment = await mongoStorage.getComment(req.params.id);
+      const comment = await Comment.findById(req.params.id);
       if (!comment) {
         return res.status(404).json({ success: false, error: 'Comment not found' });
       }
 
-      await comment.removeReaction(new Types.ObjectId(req.session.userId));
+      await comment.removeReaction(new Types.ObjectId(req.session.userId!!));
       
       // Refresh the comment to get updated reactions
       const updatedComment = await mongoStorage.getComment(req.params.id);
@@ -1478,7 +1547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         },
         message: 'Reaction removed successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Remove reaction error:', error);
       res.status(500).json({ success: false, error: 'Failed to remove reaction' });
     }
@@ -1489,7 +1558,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const updates = await mongoStorage.getProjectUpdates(req.params.id);
       res.json({ success: true, data: { updates } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get project updates error:', error);
       res.status(500).json({ success: false, error: 'Failed to get project updates' });
     }
@@ -1503,14 +1572,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Check if user owns the project
-      if (project.ownerId._id.toString() !== req.session.userId) {
+      if (project.ownerId._id.toString() !== req.session.userId!) {
         return res.status(403).json({ success: false, error: 'Only project owner can post updates' });
       }
 
       const updateData = {
         ...req.body,
         projectId: req.params.id,
-        authorId: req.session.userId
+        authorId: req.session.userId!
       };
 
       const update = await mongoStorage.createProjectUpdate(updateData);
@@ -1520,7 +1589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await Notification.createProjectUpdateNotification(
           new Types.ObjectId(req.params.id),
           update.title,
-          new Types.ObjectId(req.session.userId)
+          new Types.ObjectId(req.session.userId!)
         );
       } catch (notificationError) {
         console.error('Failed to create project update notification:', notificationError);
@@ -1532,7 +1601,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { update },
         message: 'Project update posted successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create project update error:', error);
       res.status(500).json({ success: false, error: 'Failed to create project update' });
     }
@@ -1541,7 +1610,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Project Subscription Routes
   app.post('/api/projects/:id/subscribe', requireAuth, async (req, res) => {
     try {
-      const subscribed = await mongoStorage.subscribeToProject(req.session.userId, req.params.id);
+      const subscribed = await mongoStorage.subscribeToProject(req.session.userId!!, req.params.id);
       if (subscribed) {
         // Create notification for project owner
         try {
@@ -1549,7 +1618,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           if (project) {
             await Notification.createNewSubscriberNotification(
               new Types.ObjectId(req.params.id),
-              new Types.ObjectId(req.session.userId),
+              new Types.ObjectId(req.session.userId!),
               project.ownerId
             );
           }
@@ -1565,7 +1634,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.status(400).json({ success: false, error: 'Failed to subscribe to project' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Subscribe to project error:', error);
       res.status(500).json({ success: false, error: 'Failed to subscribe to project' });
     }
@@ -1573,7 +1642,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/projects/:id/subscribe', requireAuth, async (req, res) => {
     try {
-      const unsubscribed = await mongoStorage.unsubscribeFromProject(req.session.userId, req.params.id);
+      const unsubscribed = await mongoStorage.unsubscribeFromProject(req.session.userId!!, req.params.id);
       if (unsubscribed) {
         res.json({ 
           success: true, 
@@ -1582,7 +1651,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         res.status(400).json({ success: false, error: 'Failed to unsubscribe from project' });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Unsubscribe from project error:', error);
       res.status(500).json({ success: false, error: 'Failed to unsubscribe from project' });
     }
@@ -1590,12 +1659,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get('/api/projects/:id/subscription-status', requireAuth, async (req, res) => {
     try {
-      const isSubscribed = await mongoStorage.isSubscribedToProject(req.session.userId, req.params.id);
+      const isSubscribed = await mongoStorage.isSubscribedToProject(req.session.userId!!, req.params.id);
       res.json({ 
         success: true, 
         data: { isSubscribed } 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get subscription status error:', error);
       res.status(500).json({ success: false, error: 'Failed to get subscription status' });
     }
@@ -1607,7 +1676,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const includeInactive = req.query.includeInactive === 'true';
       const categories = await mongoStorage.getCategories(includeInactive);
       res.json({ success: true, data: { categories } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get categories error:', error);
       res.status(500).json({ success: false, error: 'Failed to get categories' });
     }
@@ -1620,7 +1689,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ success: false, error: 'Category not found' });
       }
       res.json({ success: true, data: { category } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get category error:', error);
       res.status(500).json({ success: false, error: 'Failed to get category' });
     }
@@ -1630,7 +1699,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const categoryData = {
         ...req.body,
-        createdBy: req.session.userId
+        createdBy: req.session.userId!
       };
       const category = await mongoStorage.createCategory(categoryData);
       res.status(201).json({ 
@@ -1638,7 +1707,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { category }, 
         message: 'Category created successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create category error:', error);
       res.status(500).json({ success: false, error: 'Failed to create category' });
     }
@@ -1655,7 +1724,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { category }, 
         message: 'Category updated successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Update category error:', error);
       res.status(500).json({ success: false, error: 'Failed to update category' });
     }
@@ -1671,7 +1740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: 'Category deactivated successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete category error:', error);
       res.status(500).json({ success: false, error: 'Failed to delete category' });
     }
@@ -1682,7 +1751,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const limit = parseInt(req.query.limit as string) || 20;
       const tags = await mongoStorage.getPopularTags(limit);
       res.json({ success: true, data: { tags } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get popular tags error:', error);
       res.status(500).json({ success: false, error: 'Failed to get popular tags' });
     }
@@ -1698,7 +1767,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const comments = await mongoStorage.getProjectComments(req.params.projectId, filters);
       res.json({ success: true, data: { comments } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get comments error:', error);
       res.status(500).json({ success: false, error: 'Failed to get comments' });
     }
@@ -1738,7 +1807,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const commentData = {
         ...req.body,
         projectId: req.params.projectId,
-        authorId: req.session.userId
+        authorId: req.session.userId!
       };
 
       const comment = await mongoStorage.createComment(commentData);
@@ -1755,7 +1824,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch {}
         if (hasManyLinks || forbidden || (aiScore !== undefined && aiScore > 0.8)) {
           await Report.create({
-            reporterId: new Types.ObjectId(req.session.userId as string),
+            reporterId: new Types.ObjectId(req.session.userId! as string),
             targetType: 'comment',
             targetId: new Types.ObjectId(comment._id),
             reason: 'spam',
@@ -1774,9 +1843,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // If it's a reply to another comment, notify the parent comment author
         if (req.body.parentCommentId) {
           await Notification.createCommentReplyNotification(
-            comment._id,
+            comment._id!,
             new Types.ObjectId(req.body.parentCommentId),
-            new Types.ObjectId(req.session.userId),
+            new Types.ObjectId(req.session.userId!!),
             new Types.ObjectId(req.params.projectId)
           );
         } else {
@@ -1784,8 +1853,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           const project = await Project.findById(req.params.projectId).select('ownerId title');
           if (project) {
             await Notification.createNewCommentNotification(
-              comment._id,
-              new Types.ObjectId(req.session.userId),
+              comment._id!,
+              new Types.ObjectId(req.session.userId!!),
               new Types.ObjectId(req.params.projectId),
               project.ownerId
             );
@@ -1819,7 +1888,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { comment },
         message: 'Comment created successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create comment error:', error);
       res.status(500).json({ success: false, error: 'Failed to create comment' });
     }
@@ -1828,7 +1897,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Update comment (for comment authors)
   app.put('/api/comments/:id', requireAuth, async (req, res) => {
     try {
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
@@ -1842,7 +1911,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ success: false, error: 'Comment content too long (max 2000 characters)' });
       }
 
-      const updatedComment = await mongoStorage.updateComment(req.params.id, content.trim(), req.session.userId);
+      const updatedComment = await mongoStorage.updateComment(req.params.id, content.trim(), req.session.userId!);
       if (!updatedComment) {
         return res.status(404).json({ success: false, error: 'Comment not found or permission denied' });
       }
@@ -1852,7 +1921,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { comment: updatedComment },
         message: 'Comment updated successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Update comment error:', error);
       res.status(500).json({ success: false, error: 'Failed to update comment' });
     }
@@ -1860,12 +1929,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.delete('/api/comments/:id', requireAuth, async (req, res) => {
     try {
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
 
-      const deleted = await mongoStorage.deleteComment(req.params.id, req.session.userId);
+      const deleted = await mongoStorage.deleteComment(req.params.id, req.session.userId!);
       if (!deleted) {
         return res.status(404).json({ success: false, error: 'Comment not found or permission denied' });
       }
@@ -1874,7 +1943,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: 'Comment deleted successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete comment error:', error);
       res.status(500).json({ success: false, error: 'Failed to delete comment' });
     }
@@ -1891,7 +1960,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         success: true, 
         message: 'Comment deleted by admin successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin delete comment error:', error);
       res.status(500).json({ success: false, error: 'Failed to delete comment' });
     }
@@ -1914,7 +1983,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const result = await mongoStorage.getEvents(filters, pagination);
       res.json({ success: true, data: result });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get events error:', error);
       res.status(500).json({ success: false, error: 'Failed to get events' });
     }
@@ -1928,7 +1997,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       res.json({ success: true, data: { event } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get event error:', error);
       res.status(500).json({ success: false, error: 'Failed to get event' });
     }
@@ -1942,7 +2011,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ success: false, error: 'User not found' });
       }
       res.json({ success: true, data: { user } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get user error:', error);
       res.status(500).json({ success: false, error: 'Failed to get user' });
     }
@@ -1968,7 +2037,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       };
       res.json({ success: true, data });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get user metrics error:', error);
       res.status(500).json({ success: false, error: 'Failed to get user metrics' });
     }
@@ -2000,7 +2069,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // ignore badge failures
       }
       res.json({ success: true, data: { items } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get leaderboard error:', error);
       res.status(500).json({ success: false, error: 'Failed to get leaderboard' });
     }
@@ -2014,7 +2083,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ success: false, error: 'User not found' });
       }
       res.json({ success: true, data: { badges: (user as any).badges || [] } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get user badges error:', error);
       res.status(500).json({ success: false, error: 'Failed to get badges' });
     }
@@ -2024,11 +2093,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/users/:id/follow', requireAuth, async (req, res) => {
     try {
       const targetUserId = req.params.id;
-      const followerId = req.session.userId;
+      const followerId = req.session.userId!;
       const ok = await mongoStorage.followUser(followerId, targetUserId);
       if (!ok) return res.status(400).json({ success: false, error: 'Unable to follow user' });
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Follow user error:', error);
       res.status(500).json({ success: false, error: 'Failed to follow user' });
     }
@@ -2038,11 +2107,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.delete('/api/users/:id/follow', requireAuth, async (req, res) => {
     try {
       const targetUserId = req.params.id;
-      const followerId = req.session.userId;
+      const followerId = req.session.userId!;
       const ok = await mongoStorage.unfollowUser(followerId, targetUserId);
       if (!ok) return res.status(400).json({ success: false, error: 'Unable to unfollow user' });
       res.json({ success: true });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Unfollow user error:', error);
       res.status(500).json({ success: false, error: 'Failed to unfollow user' });
     }
@@ -2053,7 +2122,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const users = await mongoStorage.getFollowers(req.params.id);
       res.json({ success: true, data: { users } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get followers error:', error);
       res.status(500).json({ success: false, error: 'Failed to get followers' });
     }
@@ -2064,7 +2133,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const users = await mongoStorage.getFollowing(req.params.id);
       res.json({ success: true, data: { users } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get following error:', error);
       res.status(500).json({ success: false, error: 'Failed to get following' });
     }
@@ -2075,9 +2144,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const page = parseInt(req.query.page as string) || 1;
       const limit = parseInt(req.query.limit as string) || 20;
-      const result = await mongoStorage.getPersonalizedFeed(req.session.userId, { page, limit });
+      const result = await mongoStorage.getPersonalizedFeed(req.session.userId!, { page, limit });
       res.json({ success: true, data: result });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get personalized feed error:', error);
       res.status(500).json({ success: false, error: 'Failed to get personalized feed' });
     }
@@ -2087,9 +2156,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/projects/recommended', requireAuth, async (req, res) => {
     try {
       const limit = parseInt(req.query.limit as string) || 12;
-      const projects = await mongoStorage.getRecommendedProjects(req.session.userId, limit);
+      const projects = await mongoStorage.getRecommendedProjects(req.session.userId!, limit);
       res.json({ success: true, data: { projects } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get recommended projects error:', error);
       res.status(500).json({ success: false, error: 'Failed to get recommended projects' });
     }
@@ -2099,17 +2168,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       console.log('Update user request:', {
         userId: req.params.id,
-        sessionUserId: req.session.userId,
+        sessionUserId: req.session.userId!,
         body: req.body
       });
 
       // Users can only update their own profile, unless they're admin
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
       
-      if (req.params.id !== req.session.userId && currentUser.role !== 'admin') {
+      if (req.params.id !== req.session.userId! && currentUser.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
@@ -2125,7 +2194,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { user: updatedUser },
         message: 'User updated successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Update user error:', error);
       
       // Handle MongoDB validation errors
@@ -2144,15 +2213,78 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Onboarding & UI tips: mark tour complete, dismiss tips, save dashboard pins
+  app.post('/api/users/:id/onboarding/complete', requireAuth, async (req, res) => {
+    try {
+      if (req.params.id !== req.session.userId!) return res.status(403).json({ success: false, error: 'Permission denied' });
+      const { stepsCompleted = [], version = 1 } = req.body || {};
+      const user = await User.findByIdAndUpdate(req.params.id, {
+        onboarding: { completed: true, version, stepsCompleted, completedAt: new Date() }
+      }, { new: true });
+      if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+      res.json({ success: true, data: { user } });
+    } catch (e) {
+      res.status(500).json({ success: false, error: 'Failed to save onboarding' });
+    }
+  });
+
+  app.post('/api/users/:id/ui-tips/dismiss', requireAuth, async (req, res) => {
+    try {
+      if (req.params.id !== req.session.userId!) return res.status(403).json({ success: false, error: 'Permission denied' });
+      const { tipId } = req.body || {};
+      if (!tipId) return res.status(400).json({ success: false, error: 'tipId required' });
+      const user = await User.findByIdAndUpdate(req.params.id, { $addToSet: { 'uiTips.dismissed': tipId } }, { new: true });
+      if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+      res.json({ success: true, data: { user } });
+    } catch (e) {
+      res.status(500).json({ success: false, error: 'Failed to dismiss tip' });
+    }
+  });
+
+  app.post('/api/users/:id/dashboard/pins', requireAuth, async (req, res) => {
+    try {
+      if (req.params.id !== req.session.userId!) return res.status(403).json({ success: false, error: 'Permission denied' });
+      const { pinnedProjectIds = [], pinnedStats = [], layout } = req.body || {};
+      const user = await User.findByIdAndUpdate(req.params.id, {
+        dashboardPreferences: {
+          pinnedProjectIds,
+          pinnedStats,
+          layout: ['standard','compact','cards'].includes(layout) ? layout : 'standard'
+        }
+      }, { new: true });
+      if (!user) return res.status(404).json({ success: false, error: 'User not found' });
+      res.json({ success: true, data: { user } });
+    } catch (e) {
+      res.status(500).json({ success: false, error: 'Failed to save dashboard preferences' });
+    }
+  });
+
+  // AI: UI personalization (theme/layout suggestion)
+  app.post('/api/ai/personalize-ui', requireAuth, async (req, res) => {
+    try {
+      const { azureOpenAIService } = await import('./services/azureOpenAI');
+      const usageSignals = Array.isArray(req.body?.usageSignals) ? req.body.usageSignals : [];
+      const preferences = req.body?.preferences || {};
+      const current = req.body?.current || {};
+      const suggestion = await azureOpenAIService.suggestThemeAndLayout({ usageSignals, preferences, current });
+      // Persist last suggestion on user
+      await User.findByIdAndUpdate(req.session.userId!, { lastAiPersonalization: { ...suggestion, generatedAt: new Date() } });
+      res.json({ success: true, data: suggestion });
+    } catch (e: any) {
+      console.error('AI personalize error:', e);
+      res.status(200).json({ success: true, data: { preset: 'default', accentColor: 'blue', mode: 'system', layout: 'standard' } });
+    }
+  });
+
   app.get('/api/users/:id/subscriptions', requireAuth, async (req, res) => {
     try {
       // Users can only view their own subscriptions, unless they're admin
-      const currentUser = await mongoStorage.getUser(req.session.userId);
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
       if (!currentUser) {
         return res.status(401).json({ success: false, error: 'User not found' });
       }
       
-      if (req.params.id !== req.session.userId && currentUser.role !== 'admin') {
+      if (req.params.id !== req.session.userId! && currentUser.role !== 'admin') {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
@@ -2162,7 +2294,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { projects },
         message: 'User subscriptions retrieved successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get user subscriptions error:', error);
       res.status(500).json({ 
         success: false, 
@@ -2221,7 +2353,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { files: uploadedFiles },
         message: `${uploadedFiles.length} file(s) processed successfully` 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('File upload error:', error);
       res.status(500).json({ success: false, error: 'Failed to process files' });
     }
@@ -2253,7 +2385,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: { files: uploadedFiles },
         message: 'Files processed successfully' 
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('File upload error:', error);
       res.status(500).json({ success: false, error: 'Failed to process files' });
     }
@@ -2334,7 +2466,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           res.status(500).json({ success: false, error: 'Failed to download file' });
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Download error:', error);
       res.status(500).json({ success: false, error: 'Failed to download file' });
     }
@@ -2368,7 +2500,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Contact form submission error:', error);
       res.status(500).json({
         success: false,
@@ -2381,7 +2513,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/admin/contacts', requireAuth, async (req, res) => {
     try {
       // Check if user is admin
-      const user = await mongoStorage.getUserById(req.session.userId!);
+      const user = await mongoStorage.getUser(req.session.userId!);
       if (!user || user.role !== 'admin') {
         return res.status(403).json({
           success: false,
@@ -2418,7 +2550,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching contact submissions:', error);
       res.status(500).json({
         success: false,
@@ -2650,7 +2782,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         data: analyticsData
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Admin analytics error:', error);
       console.error(error.stack);
       res.status(500).json({
@@ -2677,7 +2809,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           timestamp: new Date().toISOString()
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin test error:', error);
       res.status(500).json({
         success: false,
@@ -2758,7 +2890,7 @@ Please provide a helpful, data-driven response based on the available statistics
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('AI query error:', error);
       res.status(500).json({
         success: false,
@@ -2812,7 +2944,7 @@ Please provide a helpful, data-driven response based on the available statistics
         }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin users fetch error:', error);
       res.status(500).json({
         success: false,
@@ -2860,7 +2992,7 @@ Please provide a helpful, data-driven response based on the available statistics
         data: { user }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin role update error:', error);
       res.status(500).json({
         success: false,
@@ -2898,7 +3030,7 @@ Please provide a helpful, data-driven response based on the available statistics
         data: { user: { ...user.toObject(), password: undefined } }
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Admin user status toggle error:', error);
       res.status(500).json({
         success: false,
@@ -2926,7 +3058,7 @@ Please provide a helpful, data-driven response based on the available statistics
         data: systemStats
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('System stats error:', error);
       res.status(500).json({
         success: false,
@@ -2977,7 +3109,7 @@ Please provide a helpful, data-driven response based on the available statistics
         data: formattedActivities
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Recent activity error:', error);
       res.status(500).json({
         success: false,
@@ -2997,7 +3129,7 @@ Please provide a helpful, data-driven response based on the available statistics
       const limit = parseInt(req.query.limit as string) || 20;
       const includeRead = req.query.includeRead === 'true';
 
-      const filter: any = { recipientId: req.session.userId };
+      const filter: any = { recipientId: req.session.userId! };
       if (!includeRead) {
         filter.read = false;
       }
@@ -3032,7 +3164,7 @@ Please provide a helpful, data-driven response based on the available statistics
           }
         }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get notifications error:', error);
       res.status(500).json({
         success: false,
@@ -3045,7 +3177,7 @@ Please provide a helpful, data-driven response based on the available statistics
   app.get('/api/notifications/unread/count', requireAuth, async (req, res) => {
     try {
       const count = await Notification.countDocuments({
-        recipientId: req.session.userId,
+        recipientId: req.session.userId!,
         read: false
       });
 
@@ -3053,7 +3185,7 @@ Please provide a helpful, data-driven response based on the available statistics
         success: true,
         data: { count }
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Get unread count error:', error);
       res.status(500).json({
         success: false,
@@ -3067,7 +3199,7 @@ Please provide a helpful, data-driven response based on the available statistics
     try {
       const notification = await Notification.findOne({
         _id: req.params.id,
-        recipientId: req.session.userId
+        recipientId: req.session.userId!
       });
 
       if (!notification) {
@@ -3084,7 +3216,7 @@ Please provide a helpful, data-driven response based on the available statistics
         data: { notification },
         message: 'Notification marked as read'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Mark notification read error:', error);
       res.status(500).json({
         success: false,
@@ -3096,14 +3228,14 @@ Please provide a helpful, data-driven response based on the available statistics
   // Mark all notifications as read for user
   app.put('/api/notifications/mark-all-read', requireAuth, async (req, res) => {
     try {
-      const result = await Notification.markAllAsRead(new Types.ObjectId(req.session.userId));
+      const result = await Notification.markAllAsRead(new Types.ObjectId(req.session.userId!));
 
       res.json({
         success: true,
         data: { modifiedCount: result.modifiedCount },
         message: 'All notifications marked as read'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Mark all notifications read error:', error);
       res.status(500).json({
         success: false,
@@ -3117,7 +3249,7 @@ Please provide a helpful, data-driven response based on the available statistics
     try {
       const result = await Notification.deleteOne({
         _id: req.params.id,
-        recipientId: req.session.userId
+        recipientId: req.session.userId!
       });
 
       if (result.deletedCount === 0) {
@@ -3131,7 +3263,7 @@ Please provide a helpful, data-driven response based on the available statistics
         success: true,
         message: 'Notification deleted'
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete notification error:', error);
       res.status(500).json({
         success: false,
@@ -3147,7 +3279,7 @@ Please provide a helpful, data-driven response based on the available statistics
   // Get user dashboard data
   app.get('/api/dashboard', requireAuth, async (req, res) => {
     try {
-      const userId = new Types.ObjectId(req.session.userId);
+      const userId = new Types.ObjectId(req.session.userId!);
       const user = await User.findById(userId);
 
       if (!user) {
@@ -3177,7 +3309,7 @@ Please provide a helpful, data-driven response based on the available statistics
         .select('title ownerId analytics.totalLikes createdAt');
 
       // Get projects user is subscribed to
-      const subscriptions = await mongoStorage.getUserSubscriptions(req.session.userId);
+      const subscriptions = await mongoStorage.getUserSubscriptions(req.session.userId!);
 
       // Get user's recent comments
       const recentComments = await Comment.find({ authorId: userId })
@@ -3276,7 +3408,7 @@ Please provide a helpful, data-driven response based on the available statistics
         data: dashboardData
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Dashboard data error:', error);
       res.status(500).json({
         success: false,
@@ -3311,7 +3443,7 @@ Please provide a helpful, data-driven response based on the available statistics
         data: health
       });
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Health check error:', error);
       res.status(500).json({
         success: false,
@@ -3328,7 +3460,7 @@ Please provide a helpful, data-driven response based on the available statistics
     try {
       const q = (req.query.q as string) || '';
       const limit = Math.min(parseInt((req.query.limit as string) || '10', 10), 50);
-      const currentUserId = new Types.ObjectId(req.session.userId);
+      const currentUserId = new Types.ObjectId(req.session.userId!);
 
       // use top-level escapeRegex
 
@@ -3359,7 +3491,7 @@ Please provide a helpful, data-driven response based on the available statistics
 
       const users = await User.aggregate(pipeline as any);
       res.json({ success: true, data: { items: users } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('User search error:', error);
       res.status(500).json({ success: false, error: 'Failed to search users' });
     }
@@ -3399,7 +3531,7 @@ Please provide a helpful, data-driven response based on the available statistics
           pagination: { page, limit, total, totalPages },
         },
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Users list error:', error);
       res.status(500).json({ success: false, error: 'Failed to list users' });
     }
@@ -3414,7 +3546,7 @@ Please provide a helpful, data-driven response based on the available statistics
         .select('username fullName profileImage');
       if (!user) return res.status(404).json({ success: false, error: 'User not found' });
       res.json({ success: true, data: { user } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Resolve user error:', error);
       res.status(500).json({ success: false, error: 'Failed to resolve user' });
     }
@@ -3423,7 +3555,7 @@ Please provide a helpful, data-driven response based on the available statistics
   // Recent contacts from conversations for quick DM suggestions
   app.get('/api/conversations/recent-contacts', requireAuth, async (req, res) => {
     try {
-      const userId = new Types.ObjectId(req.session.userId);
+      const userId = new Types.ObjectId(req.session.userId!);
       const conversations = await Conversation.find({ participants: userId })
         .sort({ lastMessageAt: -1 })
         .limit(20)
@@ -3437,7 +3569,7 @@ Please provide a helpful, data-driven response based on the available statistics
         .select('username fullName profileImage');
 
       res.json({ success: true, data: { items: users } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Recent contacts error:', error);
       res.status(500).json({ success: false, error: 'Failed to get recent contacts' });
     }
@@ -3450,18 +3582,37 @@ Please provide a helpful, data-driven response based on the available statistics
   // List user's conversations
   app.get('/api/conversations', requireAuth, async (req, res) => {
     try {
-      const userId = new Types.ObjectId(req.session.userId);
+      const userId = new Types.ObjectId(req.session.userId!);
       const conversations = await Conversation.find({ participants: userId })
         .sort({ lastMessageAt: -1, updatedAt: -1 })
-        .limit(100);
+        .limit(100)
+        .populate('participants', 'username fullName profileImage');
       res.json({ success: true, data: { conversations } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('List conversations error:', error);
       res.status(500).json({ success: false, error: 'Failed to list conversations' });
     }
   });
 
+  // Get a single conversation with participant details
+  app.get('/api/conversations/:id', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const conversationId = new Types.ObjectId(req.params.id);
+      const convo = await Conversation.findById(conversationId)
+        .populate('participants', 'username fullName profileImage');
+      if (!convo || !convo.participants.some((p: any) => p.equals ? p.equals(userId) : String(p._id) === String(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+      res.json({ success: true, data: { conversation: convo } });
+    } catch (error: any) {
+      console.error('Get conversation error:', (error as any)?.message || error);
+      res.status(500).json({ success: false, error: 'Failed to get conversation' });
+    }
+  });
+
   // Create a conversation (dm/group/project)
+  // For type === 'dm', if a conversation between the two users already exists, return it instead of creating a new one
   app.post('/api/conversations', requireAuth, async (req, res) => {
     try {
       const { type, name, description, participants = [], projectId } = req.body || {};
@@ -3470,12 +3621,24 @@ Please provide a helpful, data-driven response based on the available statistics
         return res.status(400).json({ success: false, error: 'Invalid conversation type' });
       }
 
-      const creatorId = new Types.ObjectId(req.session.userId);
+      const creatorId = new Types.ObjectId(req.session.userId!);
       const participantIds: Types.ObjectId[] = Array.from(new Set([creatorId.toString(), ...participants]))
         .map((id: string) => new Types.ObjectId(id));
 
       if (type === 'dm' && participantIds.length !== 2) {
         return res.status(400).json({ success: false, error: 'DM must have exactly two participants' });
+      }
+
+      if (type === 'dm') {
+        // Reuse existing DM if present (participants unordered)
+        const [a, b] = participantIds.map((id) => id.toString()).sort();
+        let existing = await Conversation.findOne({
+          type: 'dm',
+          participants: { $all: [new Types.ObjectId(a), new Types.ObjectId(b)] },
+        }).populate('participants', 'username fullName profileImage');
+        if (existing && Array.isArray(existing.participants) && existing.participants.length === 2) {
+          return res.json({ success: true, data: { conversation: existing } });
+        }
       }
 
       const conversation = await Conversation.create({
@@ -3488,8 +3651,11 @@ Please provide a helpful, data-driven response based on the available statistics
         lastMessageAt: new Date(),
       });
 
-      res.status(201).json({ success: true, data: { conversation } });
-    } catch (error) {
+      const populated = await Conversation.findById(conversation._id)
+        .populate('participants', 'username fullName profileImage');
+
+      res.status(201).json({ success: true, data: { conversation: populated } });
+    } catch (error: any) {
       console.error('Create conversation error:', error);
       res.status(500).json({ success: false, error: 'Failed to create conversation' });
     }
@@ -3498,7 +3664,7 @@ Please provide a helpful, data-driven response based on the available statistics
   // Get messages in a conversation
   app.get('/api/conversations/:id/messages', requireAuth, async (req, res) => {
     try {
-      const userId = new Types.ObjectId(req.session.userId);
+      const userId = new Types.ObjectId(req.session.userId!);
       const conversationId = new Types.ObjectId(req.params.id);
 
       const conversation = await Conversation.findById(conversationId).select('participants');
@@ -3527,7 +3693,7 @@ Please provide a helpful, data-driven response based on the available statistics
           totalPages: Math.ceil(total / limit),
         },
       }});
-    } catch (error) {
+    } catch (error: any) {
       console.error('List messages error:', error);
       res.status(500).json({ success: false, error: 'Failed to list messages' });
     }
@@ -3536,7 +3702,7 @@ Please provide a helpful, data-driven response based on the available statistics
   // Post a message
   app.post('/api/conversations/:id/messages', requireAuth, async (req, res) => {
     try {
-      const userId = new Types.ObjectId(req.session.userId);
+      const userId = new Types.ObjectId(req.session.userId!);
       const conversationId = new Types.ObjectId(req.params.id);
 
       const conversation = await Conversation.findById(conversationId);
@@ -3584,9 +3750,75 @@ Please provide a helpful, data-driven response based on the available statistics
       });
 
       res.status(201).json({ success: true, data: { message } });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Create message error:', error);
       res.status(500).json({ success: false, error: 'Failed to create message' });
+    }
+  });
+
+  // Edit a message (sender only); notify via SSE
+  app.put('/api/messages/:messageId', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const messageId = new Types.ObjectId(req.params.messageId);
+      const { content = '' } = req.body || {};
+      if (!content || !content.trim()) {
+        return res.status(400).json({ success: false, error: 'Content cannot be empty' });
+      }
+
+      const message = await Message.findById(messageId);
+      if (!message) return res.status(404).json({ success: false, error: 'Message not found' });
+      if (!message.senderId.equals(userId)) {
+        return res.status(403).json({ success: false, error: 'Only the sender can edit the message' });
+      }
+
+      const oldContent = message.content || '';
+      message.content = content;
+      message.edited = true as any;
+      message.editHistory = [...(message.editHistory || []), { content: oldContent, editedAt: new Date() } as any] as any;
+      await message.save();
+
+      // SSE notify
+      broadcastToConversation(message.conversationId.toString(), {
+        type: 'message_edited',
+        data: { message },
+      });
+
+      res.json({ success: true, data: { message } });
+    } catch (error: any) {
+      console.error('Edit message error:', error);
+      res.status(500).json({ success: false, error: 'Failed to edit message' });
+    }
+  });
+
+  // Delete a message for all participants (sender only). Soft delete keeps history but hides content
+  app.delete('/api/messages/:messageId', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const messageId = new Types.ObjectId(req.params.messageId);
+
+      const message = await Message.findById(messageId);
+      if (!message) return res.status(404).json({ success: false, error: 'Message not found' });
+      if (!message.senderId.equals(userId)) {
+        return res.status(403).json({ success: false, error: 'Only the sender can delete the message' });
+      }
+
+      message.isDeleted = true as any;
+      message.deletedAt = new Date() as any;
+      message.deletedBy = userId as any;
+      message.content = '';
+      message.attachments = [] as any;
+      await message.save();
+
+      broadcastToConversation(message.conversationId.toString(), {
+        type: 'message_deleted',
+        data: { messageId: String(message._id) },
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Delete message error:', error);
+      res.status(500).json({ success: false, error: 'Failed to delete message' });
     }
   });
 
@@ -3604,7 +3836,7 @@ Please provide a helpful, data-driven response based on the available statistics
 
   app.get('/api/conversations/:id/stream', requireAuth, async (req, res) => {
     try {
-      const userId = new Types.ObjectId(req.session.userId);
+      const userId = new Types.ObjectId(req.session.userId!);
       const conversationId = new Types.ObjectId(req.params.id);
 
       const conversation = await Conversation.findById(conversationId).select('participants');
@@ -3617,7 +3849,7 @@ Please provide a helpful, data-driven response based on the available statistics
       res.setHeader('Connection', 'keep-alive');
       res.flushHeaders?.();
 
-      const clientId = `${req.session.userId}:${Date.now()}:${Math.random()}`;
+      const clientId = `${req.session.userId!}:${Date.now()}:${Math.random()}`;
       const client: SseClient = { id: clientId, res, conversationId: conversationId.toString(), userId: userId.toString() };
       sseClients.set(clientId, client);
 
@@ -3626,7 +3858,7 @@ Please provide a helpful, data-driven response based on the available statistics
       req.on('close', () => {
         sseClients.delete(clientId);
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('SSE subscribe error:', error);
       res.status(500).end();
     }
@@ -3727,7 +3959,7 @@ Please provide a helpful, data-driven response based on the available statistics
         targetLanguage,
         translatedText,
         provider: 'community',
-        createdBy: new Types.ObjectId(req.session.userId),
+        createdBy: new Types.ObjectId(req.session.userId!),
       });
       res.status(201).json({ success: true, data: { translation: created } });
     } catch (error: any) {
@@ -3748,7 +3980,7 @@ Please provide a helpful, data-driven response based on the available statistics
       }
       const items = await Translation.find({ sourceType, sourceId, field, targetLanguage }).sort({ selected: -1, upvotes: -1, createdAt: -1 });
       res.json({ success: true, data: { translations: items } });
-    } catch (error) {
+    } catch (error: any) {
       res.status(500).json({ success: false, error: 'Failed to list translations' });
     }
   });
@@ -3768,7 +4000,7 @@ Please provide a helpful, data-driven response based on the available statistics
       if (vote === 'up') doc.upvotes = (doc.upvotes || 0) + 1; else doc.downvotes = (doc.downvotes || 0) + 1;
       await doc.save();
       res.json({ success: true, data: { translation: doc } });
-    } catch (error) {
+    } catch (error: any) {
       res.status(500).json({ success: false, error: 'Failed to vote' });
     }
   });
@@ -3791,7 +4023,7 @@ Please provide a helpful, data-driven response based on the available statistics
       doc.selected = true;
       await doc.save();
       res.json({ success: true, data: { translation: doc } });
-    } catch (error) {
+    } catch (error: any) {
       res.status(500).json({ success: false, error: 'Failed to select translation' });
     }
   });

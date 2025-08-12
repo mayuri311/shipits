@@ -21,15 +21,9 @@ dotenv.config({
   path: path.resolve(__dirname, '../.env'),
 });
 
-// Require MongoDB URI from environment
-const MONGODB_URI = process.env.MONGODB_URI;
-// Optional local fallback URI (used only if primary fails)
-const LOCAL_MONGODB_URI =
-  process.env.LOCAL_MONGODB_URI || 'mongodb://localhost:27017/shipits-forum';
-
-if (!MONGODB_URI) {
-  throw new Error('Environment variable MONGODB_URI must be set');
-}
+// Primary and fallback URIs
+const MONGODB_URI = process.env.MONGODB_URI || '';
+const LOCAL_MONGODB_URI = process.env.LOCAL_MONGODB_URI || 'mongodb://127.0.0.1:27017/shipits-forum';
 
 // Helper to mask credentials in logs
 function maskUri(uri: string): string {
@@ -45,12 +39,16 @@ function maskUri(uri: string): string {
   }
 }
 
-console.log(
-  '🔍 Connecting to MongoDB:',
-  MONGODB_URI.includes('.mongodb.net') ? 'Atlas' : 'Primary',
-  '\nURI:',
-  maskUri(MONGODB_URI)
-);
+if (MONGODB_URI) {
+  console.log(
+    '🔍 Connecting to MongoDB:',
+    MONGODB_URI.includes('.mongodb.net') ? 'Atlas' : 'Primary',
+    '\nURI:',
+    maskUri(MONGODB_URI)
+  );
+} else {
+  console.log('🔍 No MONGODB_URI provided. Will connect to local fallback:', LOCAL_MONGODB_URI);
+}
 
 class Database {
   private static instance: Database;
@@ -88,28 +86,44 @@ class Database {
       return this.connectPromise;
     }
 
-    this.connectPromise = mongoose
-      .connect(MONGODB_URI, {
-        maxPoolSize: 10,
-        serverSelectionTimeoutMS: 10000,
-        socketTimeoutMS: 45000,
-      })
-      .then(() => {
-        console.log('✅ Connected to primary MongoDB');
-      })
-      .catch(async (primaryError) => {
-        console.error('❌ Primary MongoDB connection failed:', primaryError.message);
-        console.log('🔄 Falling back to local MongoDB...');
-        await mongoose.connect(LOCAL_MONGODB_URI, {
+    // If primary URI is present, try primary then fallback. Otherwise connect to fallback directly.
+    if (MONGODB_URI) {
+      this.connectPromise = mongoose
+        .connect(MONGODB_URI, {
+          maxPoolSize: 10,
+          serverSelectionTimeoutMS: 10000,
+          socketTimeoutMS: 45000,
+        })
+        .then(() => {
+          console.log('✅ Connected to primary MongoDB');
+        })
+        .catch(async (primaryError) => {
+          console.error('❌ Primary MongoDB connection failed:', primaryError?.message || primaryError);
+          console.log('🔄 Falling back to local MongoDB...');
+          await mongoose.connect(LOCAL_MONGODB_URI, {
+            maxPoolSize: 10,
+            serverSelectionTimeoutMS: 5000,
+            socketTimeoutMS: 30000,
+          });
+          console.log('✅ Connected to fallback Local MongoDB');
+        })
+        .finally(() => {
+          this.connectPromise = undefined;
+        });
+    } else {
+      this.connectPromise = mongoose
+        .connect(LOCAL_MONGODB_URI, {
           maxPoolSize: 10,
           serverSelectionTimeoutMS: 5000,
           socketTimeoutMS: 30000,
+        })
+        .then(() => {
+          console.log('✅ Connected to local MongoDB (no primary URI provided)');
+        })
+        .finally(() => {
+          this.connectPromise = undefined;
         });
-        console.log('✅ Connected to fallback Local MongoDB');
-      })
-      .finally(() => {
-        this.connectPromise = undefined;
-      });
+    }
 
     return this.connectPromise;
   }

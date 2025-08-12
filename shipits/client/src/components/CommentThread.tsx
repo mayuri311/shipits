@@ -173,7 +173,7 @@ export function CommentThread({
 
   return (
     <div className={`${depth > 0 ? 'ml-8 mt-4' : ''}`}>
-      <div className="bg-gray-50 rounded-lg p-4 relative">
+      <div id={`comment-${comment._id}`} className="bg-gray-50 rounded-lg p-4 relative">
         {/* Edit/Delete controls for owner and admin */}
         {isAuthenticated && (
           (comment.authorId._id === user?._id || user?.role === 'admin') && (

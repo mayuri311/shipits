@@ -20,6 +20,7 @@ import NotFound from "@/pages/not-found";
 import Guidelines from "@/pages/guidelines";
 import VerifySuccess from "@/pages/verify-success";
 import ResetPassword from "@/pages/reset-password";
+import OnboardingTour from "@/components/OnboardingTour";
 
 function Router() {
   return (
@@ -53,6 +54,7 @@ function App() {
               <div className="fixed left-2 bottom-2 sm:left-4 sm:bottom-4 z-50">
                 <LanguageSelector />
               </div>
+              <OnboardingTour />
               <Router />
             </I18nProvider>
           </TooltipProvider>
