@@ -1,8 +1,8 @@
 import { useState, useEffect } from "react";
-import { Link, useParams } from "wouter";
+import { Link, useParams, useLocation } from "wouter";
 import { 
   Play, Heart, Share2, Bookmark, ArrowLeft, MessageSquare, 
-  Calendar, Users, Eye, Send, Trash2, Edit3, Save, X, Download, File as FileIcon, Flag
+  Calendar, Users, Eye, Send, Trash2, Edit3, Save, X, Download, File as FileIcon, Flag, Edit
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -22,8 +22,10 @@ import TranslatedMarkdown from "@/components/TranslatedMarkdown";
 import MarkdownEditor from "@/components/MarkdownEditor";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { useQueryClient } from "@tanstack/react-query";
-import type { Project, Comment } from "@shared/schema";
+import type { Project, Comment, User } from "@shared/schema";
 import { Carousel, CarouselContent, CarouselItem, CarouselPrevious, CarouselNext } from "@/components/ui/carousel";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { CollaboratorManager } from "@/components/CollaboratorManager";
 
 // Utility function to filter out placeholder/invalid updates
 const isValidUpdate = (update: any) => {
@@ -40,6 +42,7 @@ const isValidUpdate = (update: any) => {
 
 export default function ProjectDetail() {
   const { id } = useParams();
+  const [, setLocation] = useLocation();
   const { user, isAuthenticated } = useAuth();
   const { toast } = useToast();
   const isMobile = useIsMobile();
@@ -118,96 +121,7 @@ export default function ProjectDetail() {
     }
   };
 
-  // Project edit handlers
-  const handleEditProject = () => {
-    if (!project) return;
-    setProjectEditForm({
-      title: project.title,
-      description: project.description,
-      tags: project.tags || [],
-      status: project.status || "active"
-    });
-    setEditingProject(true);
-  };
 
-  const handleSaveProject = async () => {
-    if (!project || !projectEditForm.title.trim() || !projectEditForm.description.trim()) {
-      toast({
-        title: "Error",
-        description: "Title and description are required",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setSavingProject(true);
-    try {
-      const response = await projectsApi.updateProject(project._id, {
-        title: projectEditForm.title.trim(),
-        description: projectEditForm.description.trim(),
-        tags: projectEditForm.tags,
-        status: projectEditForm.status
-      });
-
-      if (response.success && response.data?.project) {
-        setProject(response.data.project);
-        setEditingProject(false);
-        toast({
-          title: "Success",
-          description: "Project updated successfully"
-        });
-      } else {
-        throw new Error(response.error || "Failed to update project");
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message || "Failed to update project",
-        variant: "destructive"
-      });
-    } finally {
-      setSavingProject(false);
-    }
-  };
-
-  const handleCancelEdit = () => {
-    setEditingProject(false);
-    setProjectEditForm({
-      title: "",
-      description: "",
-      tags: [],
-      status: "active"
-    });
-  };
-
-  const handleDeleteProject = async () => {
-    if (!project) return;
-    
-    setDeletingProject(true);
-    try {
-      const response = await projectsApi.deleteProject(project._id);
-      
-      if (response.success) {
-        toast({
-          title: "Success",
-          description: "Project deleted successfully"
-        });
-        // Redirect to forum page
-        window.location.href = "/forum";
-      } else {
-        throw new Error(response.error || "Failed to delete project");
-      }
-    } catch (error: any) {
-      toast({
-        title: "Error", 
-        description: error.message || "Failed to delete project",
-        variant: "destructive"
-      });
-    } finally {
-      setDeletingProject(false);
-      setDeleteProjectConfirm(false);
-    }
-  };
 
   const handleReportProject = async () => {
     if (!isAuthenticated || !project) {
@@ -678,6 +592,95 @@ export default function ProjectDetail() {
     }
   };
 
+  const isOwnerOrCollaborator = () => {
+    if (!project || !user) return false;
+    const isOwner = project.ownerId?._id === user._id;
+    const isCollaborator = project.collaborators?.some(c => (c as User)?._id === user._id);
+    return isOwner || isCollaborator;
+  };
+
+  const canManageProject = isOwnerOrCollaborator();
+
+  // Project editing handlers
+  const handleEditProject = () => {
+    setProjectEditForm({
+      title: project?.title || "",
+      description: project?.description || "",
+      tags: project?.tags || [],
+      status: project?.status || "active"
+    });
+    setEditingProject(true);
+  };
+
+  const handleSaveProject = async () => {
+    if (!project || !isAuthenticated) return;
+    
+    setSavingProject(true);
+    try {
+      const response = await projectsApi.updateProject(project._id, projectEditForm);
+      if (response.success) {
+        setProject(prev => prev ? { ...prev, ...projectEditForm } : null);
+        setEditingProject(false);
+        toast({
+          title: "Project Updated",
+          description: "Your project has been updated successfully.",
+        });
+      } else {
+        throw new Error(response.error || 'Failed to update project');
+      }
+    } catch (error) {
+      console.error('Update project error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to update project. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingProject(false);
+    }
+  };
+
+  const handleCancelEdit = () => {
+    setEditingProject(false);
+    setProjectEditForm({
+      title: "",
+      description: "",
+      tags: [],
+      status: "active"
+    });
+  };
+
+  const handleDeleteProject = async () => {
+    if (!project || !isAuthenticated) return;
+    
+    setDeletingProject(true);
+    try {
+      const response = await projectsApi.deleteProject(project._id);
+      if (response.success) {
+        toast({
+          title: "Project Deleted",
+          description: "Your project has been deleted successfully.",
+        });
+        // Redirect to forum after deletion
+        setTimeout(() => {
+          setLocation('/forum');
+        }, 1000);
+      } else {
+        throw new Error(response.error || 'Failed to delete project');
+      }
+    } catch (error) {
+      console.error('Delete project error:', error);
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "Failed to delete project. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeletingProject(false);
+      setDeleteProjectConfirm(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
@@ -714,6 +717,17 @@ export default function ProjectDetail() {
         confirmText="Delete"
         cancelText="Cancel"
         variant="destructive"
+      />
+      <ConfirmDialog
+        isOpen={deleteProjectConfirm}
+        onClose={() => setDeleteProjectConfirm(false)}
+        onConfirm={handleDeleteProject}
+        title="Delete Project"
+        description={`Are you sure you want to delete "${project?.title}"? This action cannot be undone and will permanently remove the project and all its comments.`}
+        confirmText="Delete Project"
+        cancelText="Cancel"
+        variant="destructive"
+        loading={deletingProject}
       />
       {/* Header */}
       <div className="bg-white border-b border-gray-200 sticky top-0 z-10">
@@ -822,8 +836,8 @@ export default function ProjectDetail() {
                           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
                             {project.title}
                           </h1>
-                          {/* Edit/Delete buttons for project owner */}
-                          {isAuthenticated && project.ownerId._id === user?._id && (
+                          {/* Edit/Delete buttons for project owner and collaborators */}
+                          {isAuthenticated && canManageProject && (
                             <div className="flex items-center gap-1 ml-2">
                               <Button
                                 onClick={handleEditProject}
@@ -849,6 +863,42 @@ export default function ProjectDetail() {
                         <p className="text-xs sm:text-sm text-gray-600">
                           By {project.ownerId?.fullName || project.ownerId?.username}
                         </p>
+                        
+                        {/* Collaborators Display */}
+                        {project.collaborators && project.collaborators.length > 0 && (
+                          <div className="flex items-center gap-2 mt-3 flex-wrap">
+                            <span className="text-xs text-gray-500">Collaborators:</span>
+                            <div className="flex items-center -space-x-2">
+                              {project.collaborators.slice(0, 5).map((collaborator: User) => (
+                                <Avatar key={collaborator._id} className="w-6 h-6 border-2 border-white">
+                                  <AvatarImage 
+                                    src={collaborator.profileImage} 
+                                    alt={collaborator.fullName || collaborator.username}
+                                  />
+                                  <AvatarFallback className="text-xs">
+                                    {(collaborator.fullName || collaborator.username)?.charAt(0).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                              ))}
+                              {project.collaborators.length > 5 && (
+                                <div className="w-6 h-6 rounded-full bg-gray-200 border-2 border-white flex items-center justify-center">
+                                  <span className="text-xs text-gray-600">+{project.collaborators.length - 5}</span>
+                                </div>
+                              )}
+                            </div>
+                            <div className="flex flex-wrap gap-1 text-xs text-gray-600 max-w-xs">
+                              {project.collaborators.slice(0, 3).map((collaborator: User, index: number) => (
+                                <span key={collaborator._id}>
+                                  {collaborator.fullName || collaborator.username}
+                                  {index < Math.min(2, project.collaborators.length - 1) && ", "}
+                                </span>
+                              ))}
+                              {project.collaborators.length > 3 && (
+                                <span>and {project.collaborators.length - 3} more</span>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </>
                     )}
                   </div>
@@ -1011,7 +1061,7 @@ export default function ProjectDetail() {
                   <div className="mb-4 bg-gradient-to-r from-amber-50 to-rose-50 border border-amber-200 rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-semibold text-gray-900">AI Project Summary</div>
-                      {isAuthenticated && (project.ownerId._id === user?._id || user?.role === 'admin') && (
+                      {isAuthenticated && (canManageProject || user?.role === 'admin') && (
                         <div className="flex gap-2">
                           {!editingAISummary && (
                             <>
@@ -1080,7 +1130,7 @@ export default function ProjectDetail() {
                     )}
                   </div>
                 )}
-                {(!project.aiSummary && isAuthenticated && (project.ownerId._id === user?._id || user?.role === 'admin')) && (
+                {(!project.aiSummary && isAuthenticated && (canManageProject || user?.role === 'admin')) && (
                   <div className="mb-4 bg-gradient-to-r from-amber-50 to-rose-50 border border-amber-200 rounded-lg p-4">
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-semibold text-gray-900">AI Project Summary</div>
@@ -1327,8 +1377,8 @@ export default function ProjectDetail() {
                   
                   
                   <TabsContent value="updates" className="mt-6">
-                    {/* Post Update Form - Only for project owner */}
-                    {isAuthenticated && project && project.ownerId._id === user?._id && (
+                    {/* Post Update Form - For project owner and collaborators */}
+                    {isAuthenticated && project && canManageProject && (
                       <div className="bg-gradient-to-r from-gray-50 to-white border border-gray-200 rounded-lg p-6 mb-6 shadow-sm">
                         <div className="flex items-center gap-2 mb-4">
                           <MessageSquare className="w-5 h-5 text-maroon" />
@@ -1426,8 +1476,8 @@ export default function ProjectDetail() {
                                 <span className="text-sm text-gray-500">
                                   {formatDate(update.createdAt)}
                                 </span>
-                                {/* Show edit/delete options for project owner */}
-                                {isAuthenticated && project && project.ownerId._id === user?._id && (
+                                {/* Show edit/delete options for project owner and collaborators */}
+                                {isAuthenticated && project && canManageProject && (
                                   <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                     {/* Future: Add edit/delete functionality */}
                                   </div>
@@ -1464,12 +1514,12 @@ export default function ProjectDetail() {
                           </div>
                           <h3 className="text-lg font-medium text-gray-900 mb-2">No updates yet</h3>
                           <p className="text-gray-500 mb-4 max-w-sm mx-auto">
-                            {project && project.ownerId._id === user?._id 
+                            {project && canManageProject 
                               ? "Share your progress, new features, and milestones with the community!"
                               : `Stay tuned for updates from ${project?.ownerId?.fullName || project?.ownerId?.username || 'the project owner'}.`
                             }
                           </p>
-                          {project && project.ownerId._id === user?._id && (
+                          {project && canManageProject && (
                             <p className="text-sm text-gray-400">
                               👆 Use the form above to post your first update
                             </p>
@@ -1481,7 +1531,7 @@ export default function ProjectDetail() {
                   
                   <TabsContent value="comments" className="mt-6">
                     {/* Thread Summary */}
-                    <div data-can-edit={(isAuthenticated && project && (project.ownerId._id === user?._id || user?.role === 'admin')) ? 'true' : 'false'}>
+                    <div data-can-edit={(isAuthenticated && project && (canManageProject || user?.role === 'admin')) ? 'true' : 'false'}>
                       <ThreadSummary 
                         projectId={id!}
                         commentCount={comments.length}
@@ -1555,9 +1605,15 @@ export default function ProjectDetail() {
                   </TabsContent>
                 </Tabs>
               </div>
-            </div>
 
-            {/* Sidebar */}
+              {/* Collaborator Manager for Owner */}
+              {isOwnerOrCollaborator() && project.ownerId?._id === user?._id && (
+                <div className="mt-8">
+                  <CollaboratorManager project={project} />
+                </div>
+              )}
+
+            </div>
             <div className="lg:col-span-1">
               {/* Creator Info */}
               <div className="bg-white rounded-lg shadow-sm p-6 mb-6">

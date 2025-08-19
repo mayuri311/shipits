@@ -3,7 +3,7 @@ import mongoose, { Schema, Document, Types } from 'mongoose';
 export interface INotification extends Document {
   _id: Types.ObjectId;
   recipientId: Types.ObjectId;
-  type: 'project_update' | 'comment_reply' | 'mention' | 'project_status_change' | 'new_subscriber' | 'event_registration' | 'event_reminder' | 'project_like' | 'comment_like' | 'new_comment' | 'new_message';
+  type: 'project_update' | 'comment_reply' | 'mention' | 'project_status_change' | 'new_subscriber' | 'event_registration' | 'event_reminder' | 'project_like' | 'comment_like' | 'new_comment' | 'new_message' | 'collaborator_added' | 'collaborator_removed';
   relatedProject?: Types.ObjectId;
   relatedComment?: Types.ObjectId;
   relatedUser?: Types.ObjectId;
@@ -33,6 +33,8 @@ interface INotificationModel extends mongoose.Model<INotification> {
   createCommentLikeNotification(commentId: Types.ObjectId, likerUserId: Types.ObjectId, commentAuthorId: Types.ObjectId, projectId: Types.ObjectId): Promise<void>;
   createNewCommentNotification(commentId: Types.ObjectId, commentAuthorId: Types.ObjectId, projectId: Types.ObjectId, projectOwnerId: Types.ObjectId): Promise<void>;
   createNewSubscriberNotification(projectId: Types.ObjectId, subscriberUserId: Types.ObjectId, projectOwnerId: Types.ObjectId): Promise<void>;
+  createCollaboratorAddedNotification(projectId: Types.ObjectId, addedUserId: Types.ObjectId, ownerId: Types.ObjectId): Promise<void>;
+  createCollaboratorRemovedNotification(projectId: Types.ObjectId, removedUserId: Types.ObjectId, ownerId: Types.ObjectId): Promise<void>;
 }
 
 const NotificationSchema = new Schema<INotification>({
@@ -54,8 +56,10 @@ const NotificationSchema = new Schema<INotification>({
       'event_reminder',
       'project_like',
       'comment_like',
-       'new_comment',
-       'new_message'
+      'new_comment',
+      'new_message',
+      'collaborator_added',
+      'collaborator_removed'
     ],
     required: true,
     index: true
@@ -338,6 +342,53 @@ NotificationSchema.statics.createNewSubscriberNotification = async function(
       relatedUser: subscriberUserId,
       title: 'New Subscriber',
       message: `Someone subscribed to your project: ${project.title}`
+    });
+  }
+};
+
+NotificationSchema.statics.createCollaboratorAddedNotification = async function(
+  projectId: Types.ObjectId,
+  addedUserId: Types.ObjectId,
+  ownerId: Types.ObjectId
+) {
+  // Get project and user details for the message
+  const [project, addedUser] = await Promise.all([
+    mongoose.model('Project').findById(projectId).select('title'),
+    mongoose.model('User').findById(addedUserId).select('username fullName')
+  ]);
+
+  if (project && addedUser) {
+    // Notify the added user
+    await this.create({
+      recipientId: addedUserId,
+      type: 'collaborator_added',
+      relatedProject: projectId,
+      relatedUser: ownerId,
+      title: 'Added as Collaborator',
+      message: `You have been added as a collaborator to "${project.title}"`
+    });
+  }
+};
+
+NotificationSchema.statics.createCollaboratorRemovedNotification = async function(
+  projectId: Types.ObjectId,
+  removedUserId: Types.ObjectId,
+  ownerId: Types.ObjectId
+) {
+  // Get project details for the message
+  const project = await mongoose.model('Project')
+    .findById(projectId)
+    .select('title');
+
+  if (project) {
+    // Notify the removed user
+    await this.create({
+      recipientId: removedUserId,
+      type: 'collaborator_removed',
+      relatedProject: projectId,
+      relatedUser: ownerId,
+      title: 'Removed as Collaborator',
+      message: `You have been removed as a collaborator from "${project.title}"`
     });
   }
 };

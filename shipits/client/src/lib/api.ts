@@ -248,8 +248,18 @@ export const projectsApi = {
     return handleResponse(response);
   },
 
-  async unlikeProject(id: string): Promise<ApiResponse<{ totalLikes: number; isLiked: boolean }>> {
-    const response = await fetch(`${API_BASE}/projects/${id}/like`, {
+  async addCollaborator(projectId: string, userId: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/projects/${projectId}/collaborators`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ userId }),
+    });
+    return handleResponse(response);
+  },
+
+  async removeCollaborator(projectId: string, userId: string): Promise<ApiResponse> {
+    const response = await fetch(`${API_BASE}/projects/${projectId}/collaborators/${userId}`, {
       method: 'DELETE',
       credentials: 'include',
     });
@@ -514,6 +524,13 @@ export const usersApi = {
 
   async getUserSubscriptions(id: string): Promise<ApiResponse<{ projects: Project[] }>> {
     const response = await fetch(`${API_BASE}/users/${id}/subscriptions`, {
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+
+  async getUserCollaborations(id: string): Promise<ApiResponse<{ projects: Project[] }>> {
+    const response = await fetch(`${API_BASE}/users/${id}/collaborations`, {
       credentials: 'include',
     });
     return handleResponse(response);

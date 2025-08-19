@@ -1,13 +1,13 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
-import { Search, Filter, ChevronDown, Heart, MessageSquare, Share2, Bookmark, User, Plus, LogOut, Trash2, Crown, BarChart3, Menu, X } from "lucide-react";
+import { Search, Filter, ChevronDown, Heart, MessageSquare, Share2, Bookmark, Plus, LogOut, Trash2, Crown, BarChart3, Menu, X, Users, UserCircle } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/contexts/AuthContext";
 import { projectsApi, categoriesApi, tagsApi, feedApi } from "@/lib/api";
-import type { Project } from "@shared/schema";
+import type { Project, User } from "@shared/schema";
 import { AuthModal } from "@/components/AuthModal";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import NotificationBell from "@/components/NotificationBell";
@@ -18,6 +18,7 @@ import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/compon
 import TranslatedText from "@/components/TranslatedText";
 import TranslatedMarkdown from "@/components/TranslatedMarkdown";
 import { truncateMarkdown } from "@/lib/markdownUtils";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 
 const sortOptions = ["Featured", "Most Recent", "Most Viewed", "Trending"];
 
@@ -326,7 +327,7 @@ export default function Forum() {
                     </Link>
                     <Link href="/profile">
                       <Button variant="outline" size="sm">
-                        <User className="w-4 h-4 mr-2" />
+                        <UserCircle className="w-4 h-4 mr-2" />
                         Profile
                       </Button>
                     </Link>
@@ -414,7 +415,7 @@ export default function Forum() {
                     </Link>
                     <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
-                        <User className="w-3 h-3 mr-2" />
+                        <UserCircle className="w-3 h-3 mr-2" />
                         Profile
                       </Button>
                     </Link>
@@ -775,6 +776,62 @@ export default function Forum() {
                           <span>{formatDate(project.createdAt)}</span>
                         </div>
 
+                        {/* Collaboration Indicators */}
+                        {project.collaborators && project.collaborators.length > 0 && (
+                          <div className="mb-3">
+                            {/* Collaborative Project Badge */}
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 w-fit">
+                                <Users className="w-3 h-3" />
+                                Collaborative
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                +{project.collaborators.length} collaborator{project.collaborators.length !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                            
+                            {/* Collaborator Avatars - Mobile Optimized */}
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-gray-600 hidden sm:inline">Team:</span>
+                              <span className="text-xs text-gray-600 sm:hidden">👥</span>
+                              <div className="flex items-center -space-x-1">
+                                {/* Owner Avatar */}
+                                <Avatar className="w-6 h-6 sm:w-5 sm:h-5 border-2 border-white shadow-sm">
+                                  <AvatarImage 
+                                    src={project.ownerId?.profileImage} 
+                                    alt={project.ownerId?.fullName || project.ownerId?.username}
+                                  />
+                                  <AvatarFallback className="text-xs bg-maroon text-white">
+                                    {(project.ownerId?.fullName || project.ownerId?.username)?.charAt(0).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                
+                                {/* Collaborator Avatars (up to 3 on mobile, 4 on desktop) */}
+                                {project.collaborators.slice(0, isMobile ? 3 : 4).map((collaborator: User) => (
+                                  <Avatar key={collaborator._id} className="w-6 h-6 sm:w-5 sm:h-5 border-2 border-white shadow-sm">
+                                    <AvatarImage 
+                                      src={collaborator.profileImage} 
+                                      alt={collaborator.fullName || collaborator.username}
+                                    />
+                                    <AvatarFallback className="text-xs bg-blue-500 text-white">
+                                      {(collaborator.fullName || collaborator.username)?.charAt(0).toUpperCase()}
+                                    </AvatarFallback>
+                                  </Avatar>
+                                ))}
+                                
+                                {/* Overflow Indicator */}
+                                {project.collaborators.length > (isMobile ? 3 : 4) && (
+                                  <div className="w-6 h-6 sm:w-5 sm:h-5 rounded-full bg-gray-200 border-2 border-white shadow-sm flex items-center justify-center">
+                                    <span className="text-xs text-gray-600">
+                                      +{project.collaborators.length - (isMobile ? 3 : 4)}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        )}
+
                         {/* Tags */}
                         {project.tags && project.tags.length > 0 && (
                           <div className="flex flex-wrap gap-1 mb-3">
@@ -821,6 +878,12 @@ export default function Forum() {
                             </svg>
                             <span>{project.analytics?.views || 0}</span>
                           </div>
+                          {project.collaborators && project.collaborators.length > 0 && (
+                            <div className="flex items-center gap-1" title={`${project.collaborators.length + 1} team members (including owner)`}>
+                              <Users className="w-4 h-4" />
+                              <span>{project.collaborators.length + 1}</span>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </Link>

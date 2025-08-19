@@ -290,6 +290,7 @@ export class MongoStorage implements IMongoStorage {
       const [projects, total] = await Promise.all([
         Project.find(query)
           .populate('ownerId', 'username fullName profileImage')
+          .populate('collaborators', 'username fullName profileImage')
           .sort(sort)
           .skip((page - 1) * limit)
           .limit(limit)
@@ -430,6 +431,7 @@ export class MongoStorage implements IMongoStorage {
         isDeleted: false 
       })
       .populate('ownerId', 'username fullName profileImage')
+      .populate('collaborators', 'username fullName profileImage')
       .sort({ createdAt: -1 })
       .limit(6)
       .lean();
@@ -448,6 +450,7 @@ export class MongoStorage implements IMongoStorage {
         isDeleted: false 
       })
       .populate('ownerId', 'username fullName profileImage')
+      .populate('collaborators', 'username fullName profileImage')
       .sort({ createdAt: -1 })
       .lean();
       

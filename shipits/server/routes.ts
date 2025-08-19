@@ -382,7 +382,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         } catch (e: any) {
           console.error('Failed to send verification email on login:', e);
         }
-        return res.status(403).json({ success: false, error: 'Email not verified. We’ve sent you a verification link.' });
+        return res.status(403).json({ success: false, error: "Email not verified. We have sent you a verification link." });
       }
 
       req.session.userId = user._id?.toString();
@@ -927,8 +927,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
-      // Check if user owns the project or is admin
-      if (project.ownerId._id.toString() !== req.session.userId! && currentUser.role !== 'admin') {
+      // Check if user is owner, collaborator, or admin
+      const isOwner = project.ownerId._id.toString() === req.session.userId!;
+      const isCollaborator = project.collaborators?.some(c => c.toString() === req.session.userId!) || false;
+      const isAdmin = currentUser.role === 'admin';
+
+      if (!isOwner && !isCollaborator && !isAdmin) {
         return res.status(403).json({ success: false, error: 'Permission denied' });
       }
 
@@ -954,9 +958,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(404).json({ success: false, error: 'Project not found' });
       }
 
-      const deleted = await mongoStorage.deleteProject(req.params.id, req.currentUser._id.toString());
+      // Check if user is owner, collaborator, or admin
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
+      if (!currentUser) {
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const isOwner = project.ownerId._id.toString() === req.session.userId!;
+      const isCollaborator = project.collaborators?.some(c => c.toString() === req.session.userId!) || false;
+      const isAdmin = currentUser.role === 'admin';
+
+      if (!isOwner && !isCollaborator && !isAdmin) {
+        return res.status(403).json({ success: false, error: "You don't have permission to delete this project." });
+      }
+
+      // Soft delete the project using mongoStorage
+      const deleted = await mongoStorage.deleteProject(req.params.id, req.session.userId!);
       if (!deleted) {
-        return res.status(404).json({ success: false, error: 'Project not found or already deleted' });
+        return res.status(404).json({ success: false, error: 'Failed to delete project' });
       }
 
       res.json({ 
@@ -4094,6 +4113,262 @@ Please provide a helpful, data-driven response based on the available statistics
       res.status(500).json({ success: false, error: 'Failed to select translation' });
     }
   });
+
+  // User search for collaborators
+  app.get('/api/users/search', requireAuth, async (req, res) => {
+    try {
+      const { query } = req.query;
+      if (!query || typeof query !== 'string') {
+        return res.status(400).json({ success: false, error: 'Search query is required' });
+      }
+
+      const users = await User.find({
+        $or: [
+          { username: { $regex: query, $options: 'i' } },
+          { fullName: { $regex: query, $options: 'i' } }
+        ],
+      }).select('username fullName profileImage').limit(10);
+
+      res.json({ success: true, data: { users } });
+    } catch (error: any) {
+      console.error('User search error:', error);
+      res.status(500).json({ success: false, error: 'Failed to search for users' });
+    }
+  });
+
+  // Get user profile
+  app.get('/api/users/:username', async (req, res) => {
+    try {
+      const user = await User.findOne({ username: req.params.username });
+      if (!user) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+      res.json({ success: true, data: { user } });
+    } catch (error: any) {
+      console.error('Get user profile error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get user profile' });
+    }
+  });
+
+  // Add a collaborator to a project
+  app.post('/api/projects/:projectId/collaborators', requireAuth, async (req, res) => {
+    try {
+      const { projectId } = req.params;
+      const { userId } = req.body;
+
+      // Input validation
+      if (!userId) {
+        return res.status(400).json({ success: false, error: 'User ID is required' });
+      }
+
+      if (!Types.ObjectId.isValid(projectId)) {
+        return res.status(400).json({ success: false, error: 'Invalid project ID format' });
+      }
+
+      if (!Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({ success: false, error: 'Invalid user ID format' });
+      }
+
+      // Check if user exists
+      const userToAdd = await User.findById(userId);
+      if (!userToAdd) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+
+      const project = await Project.findById(projectId).populate('collaborators', '_id');
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      // Check if project is active
+      if (project.isDeleted) {
+        return res.status(400).json({ success: false, error: 'Cannot add collaborators to a deleted project' });
+      }
+
+      // Ensure the current user is the owner
+      if (project.ownerId.toString() !== req.session.userId!) {
+        return res.status(403).json({ success: false, error: 'Only the project owner can add collaborators' });
+      }
+      
+      // Prevent adding the owner as a collaborator
+      if (project.ownerId.toString() === userId) {
+        return res.status(400).json({ success: false, error: 'The project owner is already managing this project' });
+      }
+
+      // Check if user is already a collaborator
+      const isAlreadyCollaborator = project.collaborators.some(
+        (collaborator: any) => collaborator._id.toString() === userId
+      );
+      
+      if (isAlreadyCollaborator) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `${userToAdd.fullName || userToAdd.username} is already a collaborator on this project` 
+        });
+      }
+
+      // Check collaborator limit (optional - prevent too many collaborators)
+      if (project.collaborators.length >= 10) {
+        return res.status(400).json({ 
+          success: false, 
+          error: 'Project has reached the maximum number of collaborators (10)' 
+        });
+      }
+
+      // Add the new collaborator
+      project.collaborators.push(userId);
+      await project.save();
+
+      // Create notification for the added collaborator
+      try {
+        await Notification.createCollaboratorAddedNotification(
+          new Types.ObjectId(projectId),
+          new Types.ObjectId(userId), 
+          new Types.ObjectId(req.session.userId!)
+        );
+      } catch (notifError) {
+        console.error('Failed to create collaborator notification:', notifError);
+        // Don't fail the main operation if notification fails
+      }
+      
+      const populatedProject = await Project.findById(projectId).populate('collaborators', 'username fullName profileImage');
+
+      res.json({ 
+        success: true, 
+        data: { collaborators: populatedProject?.collaborators },
+        message: `${userToAdd.fullName || userToAdd.username} has been added as a collaborator`
+      });
+    } catch (error: any) {
+      console.error('Add collaborator error:', error);
+      res.status(500).json({ success: false, error: 'Failed to add collaborator. Please try again.' });
+    }
+  });
+
+  // Remove a collaborator from a project
+  app.delete('/api/projects/:projectId/collaborators/:userId', requireAuth, async (req, res) => {
+    try {
+      const { projectId, userId } = req.params;
+
+      // Input validation
+      if (!Types.ObjectId.isValid(projectId)) {
+        return res.status(400).json({ success: false, error: 'Invalid project ID format' });
+      }
+
+      if (!Types.ObjectId.isValid(userId)) {
+        return res.status(400).json({ success: false, error: 'Invalid user ID format' });
+      }
+
+      // Check if user exists
+      const userToRemove = await User.findById(userId);
+      if (!userToRemove) {
+        return res.status(404).json({ success: false, error: 'User not found' });
+      }
+
+      const project = await Project.findById(projectId).populate('collaborators', '_id username fullName');
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      // Check if project is active
+      if (project.isDeleted) {
+        return res.status(400).json({ success: false, error: 'Cannot remove collaborators from a deleted project' });
+      }
+
+      // Ensure the current user is the owner
+      if (project.ownerId.toString() !== req.session.userId!) {
+        return res.status(403).json({ success: false, error: 'Only the project owner can remove collaborators' });
+      }
+      
+      // The owner cannot be removed as a collaborator
+      if (project.ownerId.toString() === userId) {
+        return res.status(400).json({ success: false, error: 'The project owner cannot be removed' });
+      }
+
+      // Check if user is actually a collaborator
+      const isCollaborator = project.collaborators.some(
+        (collaborator: any) => collaborator._id.toString() === userId
+      );
+      
+      if (!isCollaborator) {
+        return res.status(400).json({ 
+          success: false, 
+          error: `${userToRemove.fullName || userToRemove.username} is not a collaborator on this project` 
+        });
+      }
+
+      // Remove the collaborator
+      project.collaborators = project.collaborators.filter(c => c._id.toString() !== userId);
+      await project.save();
+
+      // Create notification for the removed collaborator
+      try {
+        await Notification.createCollaboratorRemovedNotification(
+          new Types.ObjectId(projectId),
+          new Types.ObjectId(userId), 
+          new Types.ObjectId(req.session.userId!)
+        );
+      } catch (notifError) {
+        console.error('Failed to create collaborator removal notification:', notifError);
+        // Don't fail the main operation if notification fails
+      }
+      
+      const populatedProject = await Project.findById(projectId).populate('collaborators', 'username fullName profileImage');
+
+      res.json({ 
+        success: true, 
+        data: { collaborators: populatedProject?.collaborators },
+        message: `${userToRemove.fullName || userToRemove.username} has been removed as a collaborator`
+      });
+    } catch (error: any) {
+      console.error('Remove collaborator error:', error);
+      res.status(500).json({ success: false, error: 'Failed to remove collaborator. Please try again.' });
+    }
+  });
+
+  // Route to get project details
+  app.get("/api/projects/:id", async (req, res) => {
+    try {
+      // Pass the authenticated user ID for view tracking if available
+      const userId = req.session.userId!;
+      const project = await mongoStorage.getProject(req.params.id, userId);
+      if (!project) {
+        return res.status(404).json({ success: false, error: 'Project not found' });
+      }
+
+      res.json({ success: true, data: { project } });
+    } catch (error: any) {
+      console.error('Get project error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get project' });
+    }
+  });
+
+  // Get user collaborations - projects where user is a collaborator
+  app.get('/api/users/:id/collaborations', async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Validate ObjectId format
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid user ID format' });
+      }
+      
+      // Find projects where this user is a collaborator
+      const projects = await Project.find({ 
+        collaborators: new Types.ObjectId(id),
+        isDeleted: false 
+      })
+      .populate('ownerId', 'username fullName profileImage')
+      .populate('collaborators', 'username fullName profileImage')
+      .sort({ updatedAt: -1 })
+      .lean();
+      
+      res.json({ success: true, data: { projects } });
+    } catch (error: any) {
+      console.error('Get user collaborations error:', error);
+      res.status(500).json({ success: false, error: 'Failed to get user collaborations' });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

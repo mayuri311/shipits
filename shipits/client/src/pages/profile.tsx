@@ -103,6 +103,15 @@ export default function Profile() {
 
   const backedProjects = backedProjectsData?.success ? backedProjectsData.data.projects : [];
 
+  // Fetch user's collaborations
+  const { data: collaborationsData, isLoading: isLoadingCollaborations } = useQuery({
+    queryKey: ['userCollaborations', user?._id],
+    queryFn: () => user?._id ? usersApi.getUserCollaborations(user._id.toString()) : null,
+    enabled: !!user?._id,
+  });
+
+  const userCollaborations = collaborationsData?.success ? collaborationsData.data.projects : [];
+
   // Gamification: metrics & badges
   const { data: metricsData } = useQuery({
     queryKey: ['userMetrics', user?._id],
@@ -673,9 +682,10 @@ export default function Profile() {
 
           <div className="bg-white rounded-lg border border-gray-200 p-4 sm:p-6 md:p-8">
             <Tabs defaultValue="my-projects" className="w-full">
-              <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-1 sm:grid-cols-3' : 'grid-cols-1 sm:grid-cols-2'} bg-gray-100 gap-1`}>
+              <TabsList className={`grid w-full ${isOwnProfile ? 'grid-cols-1 sm:grid-cols-4' : 'grid-cols-1 sm:grid-cols-3'} bg-gray-100 gap-1`}>
                 <TabsTrigger value="my-projects">My Projects</TabsTrigger>
                 <TabsTrigger value="backed-projects">Backed Projects</TabsTrigger>
+                <TabsTrigger value="collaborations">My Collaborations</TabsTrigger>
                 {isOwnProfile && (
                   <TabsTrigger value="theme-settings">Theme Settings</TabsTrigger>
                 )}
@@ -815,6 +825,111 @@ export default function Profile() {
                     )}
                   </div>
                                 )}
+              </TabsContent>
+
+              <TabsContent value="collaborations" className="mt-6">
+                {isLoadingCollaborations ? (
+                  <div className="text-center py-12">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
+                    <p className="text-gray-500">Loading collaborations...</p>
+                  </div>
+                ) : userCollaborations.length > 0 ? (
+                  <div className="space-y-4">
+                    {userCollaborations.map((project: Project) => (
+                      <div key={project._id?.toString()} className="border border-gray-200 rounded-lg p-4 sm:p-6 hover:shadow-md transition-shadow">
+                        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-lg font-semibold mb-2">
+                              <Link href={`/forum/project/${project._id}`} className="text-gray-900 hover:text-maroon line-clamp-2 sm:line-clamp-1">
+                                {project.title}
+                              </Link>
+                            </h3>
+                            <p className="text-gray-600 text-sm mb-3">
+                              <TranslatedMarkdown 
+                                sourceType="project"
+                                sourceId={project._id}
+                                field="description"
+                                text={project.description}
+                                className="line-clamp-3 sm:line-clamp-2"
+                              />
+                            </p>
+                            <p className="text-gray-500 text-xs mb-3">
+                              Created by {project.ownerId?.fullName || project.ownerId?.username}
+                            </p>
+                            
+                            {/* Tags - Mobile Optimized */}
+                            {project.tags && project.tags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 sm:gap-2 mb-3">
+                                {project.tags.slice(0, isMobile ? 3 : 6).map((tag) => (
+                                  <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                                    #{tag}
+                                  </span>
+                                ))}
+                                {isMobile && project.tags.length > 3 && (
+                                  <span className="px-2 py-1 bg-gray-200 text-gray-600 rounded-full text-xs">
+                                    +{project.tags.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                            
+                            {/* Collaboration Badge - Mobile Optimized */}
+                            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 w-fit">
+                                <User className="w-3 h-3" />
+                                Collaborator
+                              </span>
+                              <span className="text-xs text-gray-500">
+                                Team of {(project.collaborators?.length || 0) + 1} member{((project.collaborators?.length || 0) + 1) !== 1 ? 's' : ''}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          {/* Status Section - Mobile Optimized */}
+                          <div className="flex sm:flex-col sm:text-right text-sm text-gray-500 gap-4 sm:gap-0 shrink-0">
+                            <div>
+                              <span className="sm:hidden text-xs font-medium">Status: </span>
+                              <span className="capitalize font-medium">{project.status}</span>
+                            </div>
+                            <div className="sm:mt-1">
+                              <span className="sm:hidden text-xs">Updated: </span>
+                              <span className="text-xs sm:text-sm">{new Date(project.updatedAt).toLocaleDateString()}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center text-sm text-gray-500">
+                          <div className="flex gap-4">
+                            <span>👁️ {project.analytics?.views || 0} views</span>
+                            <span>❤️ {project.likes?.length || 0} likes</span>
+                            <span>💬 {project.analytics?.totalComments || 0} comments</span>
+                          </div>
+                          <Link href={`/forum/project/${project._id}`}>
+                            <Button variant="outline" size="sm">
+                              View Project
+                            </Button>
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-center py-12">
+                    <h3 className="text-lg font-semibold text-gray-600 mb-2">No collaborations yet</h3>
+                    <p className="text-gray-500 mb-4">
+                      {isOwnProfile 
+                        ? "You haven't been added as a collaborator to any projects yet. Start collaborating with other creators!"
+                        : "This user isn't collaborating on any projects yet."
+                      }
+                    </p>
+                    {isOwnProfile && (
+                      <Link href="/forum">
+                        <Button variant="outline" className="bg-blue-50 text-blue-700 hover:bg-blue-100">
+                          Explore Projects to Join
+                        </Button>
+                      </Link>
+                    )}
+                  </div>
+                )}
               </TabsContent>
 
               {isOwnProfile && (

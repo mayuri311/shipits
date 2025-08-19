@@ -134,6 +134,10 @@ export default function NotificationBell() {
         return '📝';
       case 'new_subscriber':
         return '👤';
+      case 'collaborator_added':
+        return '🤝';
+      case 'collaborator_removed':
+        return '👋';
       case 'event_registration':
         return '📅';
       case 'event_reminder':
@@ -206,7 +210,11 @@ export default function NotificationBell() {
                 <div
                   key={notification._id}
                   className={`p-4 hover:bg-gray-50 cursor-pointer transition-colors ${
-                    !notification.read ? 'bg-blue-50 border-l-4 border-l-blue-500' : ''
+                    !notification.read 
+                      ? notification.type === 'collaborator_added' || notification.type === 'collaborator_removed'
+                        ? 'bg-green-50 border-l-4 border-l-green-500' 
+                        : 'bg-blue-50 border-l-4 border-l-blue-500'
+                      : ''
                   }`}
                   onClick={() => handleNotificationClick(notification)}
                 >
@@ -215,9 +223,16 @@ export default function NotificationBell() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-start justify-between">
                         <div className="flex-1">
-                          <p className="font-medium text-sm text-gray-900">
-                            {notification.title}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-sm text-gray-900">
+                              {notification.title}
+                            </p>
+                            {(notification.type === 'collaborator_added' || notification.type === 'collaborator_removed') && (
+                              <Badge variant="secondary" className="text-xs bg-green-100 text-green-700 hover:bg-green-200">
+                                Team
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-sm text-gray-600 mt-1">
                             {notification.message}
                           </p>
