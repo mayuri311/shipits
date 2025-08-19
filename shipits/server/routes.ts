@@ -3,10 +3,12 @@ import express from "express";
 import { createServer, type Server } from "http";
 import { mongoStorage } from "./services/mongoStorage";
 import { upload, getFileUrl, getFileCategory, saveFileToDisk, generateUniqueFilename, getFileIcon } from "./services/fileUpload";
+import { s3Storage } from "./services/s3Storage";
 import { azureOpenAIService } from "./services/azureOpenAI";
 import { z } from "zod";
 import session from "express-session";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { Types } from "mongoose";
 import mongoose from "mongoose";
@@ -2325,14 +2327,27 @@ export async function registerRoutes(app: Express): Promise<Server> {
         let filePath;
         
         if (fileCategory === 'image') {
-          // For images, save to disk and return a stable URL instead of embedding base64
-          await saveFileToDisk(file.buffer, uniqueFilename);
-          filePath = getFileUrl(uniqueFilename);
-          fileData = filePath;
+          // For images, try S3 first, then fallback to disk
+          console.log('🔧 S3 Debug - isConfigured():', s3Storage.isConfigured(), 'AWS_S3_BUCKET:', process.env.AWS_S3_BUCKET);
+          if (s3Storage.isConfigured()) {
+            const s3Result = await s3Storage.uploadFile(file.buffer, uniqueFilename, file.mimetype, file.originalname);
+            filePath = s3Result.url;
+            fileData = filePath;
+          } else {
+            await saveFileToDisk(file.buffer, uniqueFilename);
+            filePath = getFileUrl(uniqueFilename);
+            fileData = filePath;
+          }
         } else {
-          // For documents and other files, save to disk
-          filePath = await saveFileToDisk(file.buffer, uniqueFilename);
-          fileData = getFileUrl(uniqueFilename);
+          // For documents and other files, try S3 first, then fallback to disk
+          if (s3Storage.isConfigured()) {
+            const s3Result = await s3Storage.uploadFile(file.buffer, uniqueFilename, file.mimetype, file.originalname);
+            filePath = s3Result.url;
+            fileData = filePath;
+          } else {
+            filePath = await saveFileToDisk(file.buffer, uniqueFilename);
+            fileData = getFileUrl(uniqueFilename);
+          }
         }
         
         uploadedFiles.push({
@@ -2419,10 +2434,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
             ? image.originalName
             : `${image.originalName}.${extFromMime}`
         );
-
-        await saveFileToDisk(buffer, uniqueFilename);
-        const url = getFileUrl(uniqueFilename);
-        const size = image.size || buffer.byteLength;
+        // Prefer S3 when configured, otherwise fall back to local disk
+        let url: string;
+        let size = image.size || buffer.byteLength;
+        try {
+          if (s3Storage.isConfigured()) {
+            // Debug info to verify S3 path is taken
+            console.log('🔧 S3 Debug (processed-images) - isConfigured():', s3Storage.isConfigured(), 'AWS_S3_BUCKET:', process.env.AWS_S3_BUCKET);
+            const s3Result = await s3Storage.uploadFile(buffer, uniqueFilename, image.mimetype, image.originalName);
+            url = s3Result.url;
+            size = size || buffer.byteLength;
+          } else {
+            await saveFileToDisk(buffer, uniqueFilename);
+            url = getFileUrl(uniqueFilename);
+          }
+        } catch (e) {
+          console.error('S3 upload failed, falling back to local disk for processed-images:', (e as any)?.message || e);
+          await saveFileToDisk(buffer, uniqueFilename);
+          url = getFileUrl(uniqueFilename);
+        }
 
         savedImages.push({
           filename: uniqueFilename,
@@ -2448,11 +2478,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get('/api/download/:filename', async (req, res) => {
     try {
       const { filename } = req.params;
-      const uploadsDir = path.join(__dirname, '../../uploads');
+      const uploadsDir = path.join(__dirname, '../uploads');
       const filePath = path.join(uploadsDir, filename);
       
       // Check if file exists
-      if (!require('fs').existsSync(filePath)) {
+      if (!fs.existsSync(filePath)) {
         return res.status(404).json({ success: false, error: 'File not found' });
       }
       
@@ -2472,8 +2502,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Serve uploaded files statically
-  app.use('/uploads', express.static(path.join(__dirname, '../../uploads')));
+  // Serve uploaded files from S3 (or local fallback)
+  app.get('/uploads/:filename', async (req, res) => {
+    try {
+      const { filename } = req.params;
+      
+      // Try S3 first if configured
+      if (s3Storage.isConfigured()) {
+        try {
+          const { stream, contentType, contentLength, lastModified } = await s3Storage.getFileStream(filename);
+          
+          // Set appropriate headers
+          res.set({
+            'Content-Type': contentType,
+            'Content-Length': contentLength.toString(),
+            'Last-Modified': lastModified.toUTCString(),
+            'Cache-Control': 'public, max-age=31536000', // 1 year cache
+            'ETag': `"${filename}-${lastModified.getTime()}"`,
+          });
+          
+          // Stream the file
+          stream.pipe(res);
+          return;
+        } catch (s3Error) {
+          console.warn('S3 file not found, trying local fallback:', filename);
+        }
+      }
+      
+      // Fallback to local filesystem
+      const localPath = path.join(__dirname, '../uploads', filename);
+      if (fs.existsSync(localPath)) {
+        return res.sendFile(localPath);
+      }
+      
+      // File not found anywhere
+      res.status(404).json({ error: 'File not found' });
+    } catch (error) {
+      console.error('Error serving file:', error);
+      res.status(500).json({ error: 'Internal server error' });
+    }
+  });
 
   // Contact Form Submission
   app.post('/api/contact', validateBody(contactSchema), async (req, res) => {
@@ -3452,8 +3520,7 @@ Please provide a helpful, data-driven response based on the available statistics
     }
   });
 
-  // Serve uploaded files
-  app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
+  // Note: File serving moved to main /uploads/:filename route above
 
   // User search (for DM picker) - authenticated, limited fields, better ranking
   app.get('/api/users/search', requireAuth, async (req, res) => {

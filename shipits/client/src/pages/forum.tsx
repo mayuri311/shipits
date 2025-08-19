@@ -17,6 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { YouTubeEmbed, extractYouTubeVideoId, isValidYouTubeUrl } from "@/components/YouTubeEmbed";
 import TranslatedText from "@/components/TranslatedText";
 import TranslatedMarkdown from "@/components/TranslatedMarkdown";
+import { truncateMarkdown } from "@/lib/markdownUtils";
 
 const sortOptions = ["Featured", "Most Recent", "Most Viewed", "Trending"];
 
@@ -766,7 +767,7 @@ export default function Forum() {
                             sourceType="project"
                             sourceId={project._id}
                             field="description"
-                            text={project.description}
+                            text={truncateMarkdown(project.description)}
                           />
                         </div>
                         <div className="flex flex-col sm:flex-row items-center justify-between text-xs sm:text-sm text-gray-500 mb-3 gap-1 sm:gap-0">

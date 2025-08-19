@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { ArrowLeft, Upload, Plus, X, Youtube, ExternalLink } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -52,16 +52,56 @@ export default function CreateProject() {
   const [improvingDesc, setImprovingDesc] = useState(false);
   const [improvedDesc, setImprovedDesc] = useState<string | null>(null);
 
+  // Effect to sync images from Markdown description to the main media array
+  useEffect(() => {
+    // Regex to find all markdown image URLs like ![...](...)
+    const imageUrls = (projectData.description.match(/!\[.*?\]\((.*?)\)/g) || [])
+      .map(md => md.match(/!\[.*?\]\((.*?)\)/)?.[1])
+      .filter((url): url is string => !!url && url.startsWith('/uploads/'));
+
+    // Get the filenames that are already in the media array
+    const existingMediaFilenames = new Set(projectData.media.map(item => item.filename));
+
+    // Find new images that are in the description but not in the media array yet
+    const newImages = imageUrls
+      .map(url => {
+        const filename = url.split('/').pop() || '';
+        return { url, filename };
+      })
+      .filter(({ filename }) => !existingMediaFilenames.has(filename));
+
+    if (newImages.length > 0) {
+      const newMediaItems = newImages.map((image, index) => ({
+        type: 'image' as const,
+        url: image.url,
+        filename: image.filename,
+        originalName: image.filename,
+        mimetype: 'image/jpeg', // Assumption, but safe for display
+        size: 0, // We don't have size info here
+        caption: image.filename,
+        order: projectData.media.length + index,
+      }));
+
+      setProjectData(prev => ({
+        ...prev,
+        media: [...prev.media, ...newMediaItems],
+      }));
+    }
+  }, [projectData.description]);
+
+
   const handleImagesUploaded = (images: Array<{
     filename: string;
     originalName: string;
-    data: string;
+    data?: string;
+    url?: string;
     size: number;
     mimetype: string;
   }>) => {
     const mediaItems = images.map((image, index) => ({
       type: 'image' as const,
-      data: image.data, // Use Base64 data instead of URL
+      data: image.data, // Base64 data (for compressed uploads)
+      url: image.url,   // Server URL (for uploaded files)
       filename: image.filename,
       originalName: image.originalName,
       mimetype: image.mimetype,
@@ -72,7 +112,7 @@ export default function CreateProject() {
     
     setProjectData(prev => ({
       ...prev,
-      media: [...prev.media, ...mediaItems]
+      media: mediaItems // Replace, don't concatenate
     }));
   };
 
@@ -604,7 +644,7 @@ export default function CreateProject() {
                           {mediaItem.type === 'image' && (
                             <div className="aspect-video bg-gray-100">
                               <img
-                                src={mediaItem.data}
+                                src={mediaItem.url}
                                 alt={mediaItem.caption || `${projectData.title || 'Untitled project'} - Image ${index + 1}`}
                                 className="w-full h-full object-cover"
                               />
