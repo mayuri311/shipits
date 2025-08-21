@@ -589,7 +589,28 @@ export default function ListDetail() {
 
   const handleExternalLink = async (url: string, itemId: string) => {
     await trackItemAction(itemId, 'click');
-    window.open(url, '_blank', 'noopener,noreferrer');
+
+    // For mobile devices, try to open in same tab first, then fallback to new tab
+    const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      try {
+        // Try to open in new tab
+        const newWindow = window.open(url, '_blank', 'noopener,noreferrer');
+        // If popup is blocked, redirect current tab after a short delay
+        if (!newWindow) {
+          setTimeout(() => {
+            window.location.href = url;
+          }, 100);
+        }
+      } catch (error) {
+        // Fallback for any errors
+        window.location.href = url;
+      }
+    } else {
+      // Desktop: open in new tab as usual
+      window.open(url, '_blank', 'noopener,noreferrer');
+    }
   };
 
   const canContribute = () => {
@@ -675,8 +696,18 @@ export default function ListDetail() {
               <CardTitle className="text-lg font-semibold mb-2 line-clamp-2">
                 {item.metadata.url ? (
                   <button
-                    onClick={() => handleExternalLink(item.metadata.url!, item._id)}
-                    className="text-left hover:text-blue-600 transition-colors flex items-center gap-2"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleExternalLink(item.metadata.url!, item._id);
+                    }}
+                    onTouchEnd={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleExternalLink(item.metadata.url!, item._id);
+                    }}
+                    className="text-left hover:text-blue-600 transition-colors flex items-center gap-2 min-h-[44px] w-full touch-manipulation select-none"
+                    style={{ WebkitTapHighlightColor: 'transparent' }}
                   >
                     {item.title}
                     <ExternalLink className="w-4 h-4 opacity-60" />
@@ -1117,10 +1148,17 @@ export default function ListDetail() {
                 .sort((a, b) => (b.analytics.upvotes || 0) - (a.analytics.upvotes || 0))
                 .map((item, index) => (
                 <div key={item._id} className="relative">
-                  <div className="absolute -left-8 top-4 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-semibold">
+                  {/* Desktop: Numbers outside the card */}
+                  <div className="hidden md:flex absolute -left-8 top-4 w-6 h-6 bg-blue-100 text-blue-600 rounded-full items-center justify-center text-xs font-semibold z-10">
                     {index + 1}
                   </div>
+
                   <ListItemCard item={item} />
+
+                  {/* Mobile: Numbers as overlay on top of card */}
+                  <div className="md:hidden absolute top-4 left-2 w-6 h-6 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-xs font-semibold z-20 shadow-sm">
+                    {index + 1}
+                  </div>
                 </div>
               ))}
             </div>
