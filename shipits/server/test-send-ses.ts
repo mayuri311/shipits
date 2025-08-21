@@ -15,7 +15,7 @@ async function main() {
   console.log('Sending SES email to', to);
   await sendEmailViaSES({
     to,
-    subject: 'ShipIts Email Verification — Test Message',
+    subject: 'Osprey @ CMU Email Verification — Test Message',
     html,
     text: `Please verify your email: ${verifyUrl}`,
   });

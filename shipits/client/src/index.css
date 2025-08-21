@@ -34,7 +34,7 @@
   --ring: hsl(20, 14.3%, 4.1%);
   --radius: 0.5rem;
   
-  /* Custom colors for Ship Its @ CMU */
+  /* Custom colors for Osprey @ CMU */
   --maroon: hsl(345, 100%, 25%);
   --maroon-light: hsl(345, 100%, 31%);
   --maroon-dark: hsl(345, 100%, 19%);
@@ -283,9 +283,56 @@
   .bg-theme-info {
     background-color: var(--theme-info);
   }
-  
+
   .border-theme-primary {
     border-color: var(--theme-primary);
+  }
+
+  /* Additional dark mode utilities for better theme support */
+  .bg-theme-surface {
+    background-color: var(--background);
+  }
+
+  .text-theme-on-surface {
+    color: var(--foreground);
+  }
+
+  .text-theme-on-surface-variant {
+    color: var(--muted-foreground);
+  }
+
+  .border-theme-outline {
+    border-color: var(--border);
+  }
+
+  .bg-theme-surface-variant {
+    background-color: var(--muted);
+  }
+
+  /* Interactive states for better UX */
+  .hover\:bg-theme-surface:hover {
+    background-color: var(--muted);
+  }
+
+  .hover\:text-theme-on-surface:hover {
+    color: var(--foreground);
+  }
+
+  .focus\:ring-theme-primary:focus {
+    --tw-ring-color: var(--primary);
+  }
+
+  /* Utility for elements that should have different appearances in light/dark */
+  .theme-aware-bg {
+    background-color: var(--background);
+  }
+
+  .theme-aware-text {
+    color: var(--foreground);
+  }
+
+  .theme-aware-border {
+    border-color: var(--border);
   }
   
   /* Font size utilities for accessibility */
@@ -341,10 +388,79 @@
   overflow: hidden;
 }
 
-/* Smooth scroll behavior */
+  /* Smooth scroll behavior */
 html {
   scroll-padding-top: 80px;
   scroll-behavior: smooth;
+}
+
+/* Theme-aware shadow utilities */
+.theme-shadow-sm {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+}
+
+.theme-shadow {
+  box-shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+}
+
+.theme-shadow-md {
+  box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+}
+
+.theme-shadow-lg {
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+}
+
+.theme-shadow-xl {
+  box-shadow: 0 20px 25px -5px rgb(0 0 0 / 0.1), 0 8px 10px -6px rgb(0 0 0 / 0.1);
+}
+
+/* Dark mode shadow adjustments */
+.dark .theme-shadow-sm,
+.dark .theme-shadow,
+.dark .theme-shadow-md,
+.dark .theme-shadow-lg,
+.dark .theme-shadow-xl {
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.3);
+}
+
+/* Theme-aware divider */
+.theme-divider {
+  border-color: var(--border);
+}
+
+/* Theme-aware input styles */
+.theme-input {
+  background-color: var(--background);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+.theme-input:focus {
+  border-color: var(--ring);
+  box-shadow: 0 0 0 2px var(--ring) / 0.2);
+}
+
+/* Theme-aware button variants */
+.theme-btn-secondary {
+  background-color: var(--secondary);
+  color: var(--secondary-foreground);
+  border-color: var(--border);
+}
+
+.theme-btn-secondary:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
+}
+
+.theme-btn-ghost {
+  background-color: transparent;
+  color: var(--foreground);
+}
+
+.theme-btn-ghost:hover {
+  background-color: var(--accent);
+  color: var(--accent-foreground);
 }
 
 /* Enhanced section padding for fixed header */

@@ -1,5 +1,5 @@
 // MongoDB Models Export
-// This file exports all MongoDB models for the ShipIts Forum application
+// This file exports all MongoDB models for the Osprey @ CMU Forum application
 
 export { User, type IUser } from './User';
 export { Project, type IProject } from './Project';
@@ -15,6 +15,8 @@ export { ThreadSummary, type IThreadSummary } from './ThreadSummary';
 export { Contact, type IContact } from './Contact';
 export { Translation, type ITranslation } from './Translation';
 export { Report, type IReport } from './Report';
+export { List, type IList } from './List';
+export { ListItem, type IListItem } from './ListItem';
 
 // Model initialization function
 import mongoose from 'mongoose';
@@ -32,6 +34,8 @@ import { ThreadSummary } from './ThreadSummary';
 import { Conversation } from './Conversation';
 import { Message } from './Message';
 import { Contact } from './Contact';
+import { List } from './List';
+import { ListItem } from './ListItem';
 
 /**
  * Initialize all MongoDB models
@@ -58,7 +62,9 @@ export async function initializeModels(): Promise<void> {
       'Contact',
       'Conversation',
       'Message',
-      'Translation'
+      'Translation',
+      'List',
+      'ListItem'
     ];
     
     // Ensure indexes are created for all models
@@ -123,13 +129,13 @@ export async function seedDatabase(): Promise<void> {
     // Create admin user
     const adminUser = await User.create({
       username: 'admin',
-      email: 'admin@shipits.com',
+      email: 'admin@osprey.cmu.edu',
       password: 'admin123', // This will be hashed automatically
-      fullName: 'ShipIts Administrator',
+      fullName: 'Osprey @ CMU Administrator',
       role: 'admin',
       college: 'School of Computer Science',
       graduationYear: new Date().getFullYear(),
-      bio: 'ShipIts Forum Administrator'
+      bio: 'Osprey @ CMU Forum Administrator'
     });
     
     console.log('👑 Created admin user:', adminUser.username);
@@ -144,7 +150,7 @@ export async function seedDatabase(): Promise<void> {
     
     // Create a sample featured project
     const sampleProject = await Project.create({
-      title: 'Welcome to ShipIts Forum!',
+      title: 'Welcome to Osprey @ CMU Forum!',
       ownerId: adminUser._id,
       description: 'This is a sample project to get you started. Share your amazing creations with the CMU community!',
       status: 'active',
@@ -172,8 +178,8 @@ export async function seedDatabase(): Promise<void> {
     endDate.setHours(futureDate.getHours() + 2); // 2 hours duration
     
     const sampleEvent = await Event.create({
-      title: 'ShipIts Welcome Event',
-      description: 'Join us for an introduction to the ShipIts community and learn how to showcase your projects!',
+      title: 'Osprey @ CMU Welcome Event',
+      description: 'Join us for an introduction to the Osprey @ CMU community and learn how to showcase your projects!',
       eventType: 'major',
       startDateTime: futureDate,
       endDateTime: endDate,
@@ -212,9 +218,13 @@ export async function getDatabaseStats(): Promise<any> {
       subscriptions: await Subscription.countDocuments(),
       notifications: await Notification.countDocuments(),
       contacts: await Contact.countDocuments(),
+      lists: await List.countDocuments(),
+      listItems: await ListItem.countDocuments(),
       activeUsers: await User.countDocuments({ isActive: true }),
       activeProjects: await Project.countDocuments({ status: 'active', isDeleted: false }),
       featuredProjects: await Project.countDocuments({ featured: true, status: 'active' }),
+      activeLists: await List.countDocuments({ status: 'active' }),
+      featuredLists: await List.countDocuments({ featured: true, status: 'active' }),
       upcomingEvents: await Event.countDocuments({ startDateTime: { $gt: new Date() } }),
       recentContacts: await Contact.countDocuments({ 
         createdAt: { $gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) } // Last 30 days

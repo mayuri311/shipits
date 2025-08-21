@@ -1,6 +1,6 @@
-# ShipIts Forum - Dependencies & Requirements
+# Osprey @ CMU Forum - Dependencies & Requirements
 
-This document lists all system and application dependencies required for deploying the ShipIts Forum.
+This document lists all system and application dependencies required for deploying the Osprey @ CMU Forum.
 
 ## System Requirements
 

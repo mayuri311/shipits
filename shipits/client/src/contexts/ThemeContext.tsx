@@ -58,7 +58,7 @@ const THEME_PRESETS: ThemePreset[] = [
   {
     id: 'default',
     name: 'Default',
-    description: 'The standard ShipIts theme',
+    description: 'The standard Osprey @ CMU theme',
     colors: {
       light: {
         '--primary': 'hsl(207, 90%, 54%)',

@@ -1,6 +1,6 @@
-# ShipIts Forum - AWS EC2 Deployment Guide
+# Osprey @ CMU Forum - AWS EC2 Deployment Guide
 
-This guide will help you deploy the ShipIts Forum application to an AWS EC2 instance.
+This guide will help you deploy the Osprey @ CMU Forum application to an AWS EC2 instance.
 
 ## Prerequisites
 

@@ -401,7 +401,7 @@ export type ConfirmPasswordReset = z.infer<typeof confirmPasswordResetSchema>;
 
 // Report Schemas
 export const createReportSchema = z.object({
-  targetType: z.enum(['user', 'project', 'comment']),
+  targetType: z.enum(['user', 'project', 'comment', 'listItem']),
   targetId: z.string().min(1),
   reason: z.enum(['spam', 'abuse', 'harassment', 'hate', 'sexual', 'self-harm', 'copyright', 'other']),
   details: z.string().max(1000).optional(),
@@ -566,4 +566,233 @@ export type EventFilters = {
   featured?: boolean;
   upcoming?: boolean;
   tags?: string[];
+};
+
+// MongoDB List Schema Validation
+export const listSchema = z.object({
+  _id: z.instanceof(Types.ObjectId).optional(),
+  title: z.string().min(1).max(200),
+  description: z.string().min(1).max(1000),
+  category: z.enum([
+    'funding', 'venture-capital', 'resources', 'tools', 'learning', 
+    'networking', 'jobs', 'startups', 'research', 'events',
+    'books', 'articles', 'videos', 'courses', 'communities',
+    'software', 'hardware', 'design', 'marketing', 'other'
+  ]),
+  tags: z.array(z.string().max(50)),
+  createdBy: z.instanceof(Types.ObjectId),
+  isPublic: z.boolean().default(true),
+  collaborators: z.array(z.object({
+    userId: z.instanceof(Types.ObjectId),
+    role: z.enum(['owner', 'editor', 'viewer']).default('editor'),
+    addedAt: z.date().default(() => new Date()),
+    addedBy: z.instanceof(Types.ObjectId).optional()
+  })).optional(),
+  settings: z.object({
+    allowAnonymousContributions: z.boolean().default(true),
+    requireApprovalForNewItems: z.boolean().default(false),
+    allowItemEditing: z.boolean().default(true),
+    allowItemDeletion: z.boolean().default(false),
+    maxItemsPerUser: z.number().min(1).max(100).optional()
+  }),
+  analytics: z.object({
+    views: z.number().default(0),
+    uniqueViewers: z.array(z.instanceof(Types.ObjectId)).default([]),
+    totalItems: z.number().default(0),
+    totalContributors: z.array(z.instanceof(Types.ObjectId)).default([]),
+    lastActivity: z.date().default(() => new Date())
+  }).optional(),
+  featured: z.boolean().default(false),
+  template: z.object({
+    isTemplate: z.boolean().default(false),
+    templateName: z.string().max(100).optional(),
+    fields: z.array(z.object({
+      name: z.string().min(1).max(50),
+      type: z.enum(['text', 'url', 'markdown', 'number', 'date']).default('text'),
+      required: z.boolean().default(false),
+      placeholder: z.string().max(200).optional()
+    })).optional()
+  }).optional(),
+  status: z.enum(['active', 'archived', 'private', 'deleted']).default('active'),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+// MongoDB ListItem Schema Validation
+export const listItemSchema = z.object({
+  _id: z.instanceof(Types.ObjectId).optional(),
+  listId: z.instanceof(Types.ObjectId),
+  title: z.string().min(1).max(300),
+  content: z.string().min(1).max(5000),
+  order: z.number().default(0),
+  metadata: z.object({
+    url: z.string().url().optional(),
+    type: z.enum(['resource', 'tool', 'article', 'video', 'book', 'course', 'company', 'person', 'event', 'other']).default('resource'),
+    tags: z.array(z.string().max(50)).default([]),
+    description: z.string().max(500).optional(),
+    category: z.string().max(100).optional(),
+    rating: z.number().min(1).max(5).optional(),
+    price: z.object({
+      amount: z.number().min(0),
+      currency: z.enum(['USD', 'EUR', 'GBP', 'CAD', 'AUD']).default('USD'),
+      isFree: z.boolean().default(true)
+    }).optional(),
+    contact: z.object({
+      email: z.string().email().optional(),
+      website: z.string().url().optional(),
+      social: z.object({
+        twitter: z.string().optional(),
+        linkedin: z.string().optional(),
+        github: z.string().optional()
+      }).optional()
+    }).optional()
+  }),
+  createdBy: z.instanceof(Types.ObjectId),
+  lastEditedBy: z.instanceof(Types.ObjectId).optional(),
+  editHistory: z.array(z.object({
+    editedBy: z.instanceof(Types.ObjectId),
+    editedAt: z.date().default(() => new Date()),
+    changes: z.array(z.object({
+      field: z.string(),
+      oldValue: z.string(),
+      newValue: z.string()
+    })),
+    reason: z.string().max(200).optional()
+  })).optional(),
+  status: z.enum(['active', 'pending', 'approved', 'rejected', 'deleted']).default('active'),
+  approvals: z.array(z.object({
+    userId: z.instanceof(Types.ObjectId),
+    action: z.enum(['approve', 'reject']),
+    reason: z.string().max(200).optional(),
+    timestamp: z.date().default(() => new Date())
+  })).optional(),
+  reactions: z.array(z.object({
+    userId: z.instanceof(Types.ObjectId),
+    type: z.enum(['like', 'helpful', 'outdated', 'spam', 'upvote']),
+    timestamp: z.date().default(() => new Date())
+  })).optional(),
+  comments: z.array(z.object({
+    _id: z.instanceof(Types.ObjectId).optional(),
+    userId: z.instanceof(Types.ObjectId),
+    content: z.string().min(1).max(1000),
+    timestamp: z.date().default(() => new Date()),
+    edited: z.boolean().default(false),
+    editedAt: z.date().optional()
+  })).optional(),
+  analytics: z.object({
+    views: z.number().default(0),
+    clicks: z.number().default(0),
+    copies: z.number().default(0),
+    likes: z.number().default(0),
+    helpful: z.number().default(0),
+    upvotes: z.number().default(0)
+  }).optional(),
+  customFields: z.record(z.any()).optional(),
+  featured: z.boolean().default(false),
+  createdAt: z.date().optional(),
+  updatedAt: z.date().optional()
+});
+
+// Create schemas for inserts
+export const createListSchema = z.object({
+  title: z.string().min(1).max(200),
+  description: z.string().min(1).max(1000),
+  category: z.enum([
+    'funding', 'venture-capital', 'resources', 'tools', 'learning', 
+    'networking', 'jobs', 'startups', 'research', 'events',
+    'books', 'articles', 'videos', 'courses', 'communities',
+    'software', 'hardware', 'design', 'marketing', 'other'
+  ]),
+  tags: z.array(z.string().max(50)).default([]),
+  isPublic: z.boolean().default(true),
+  settings: z.object({
+    allowAnonymousContributions: z.boolean().default(true),
+    requireApprovalForNewItems: z.boolean().default(false),
+    allowItemEditing: z.boolean().default(true),
+    allowItemDeletion: z.boolean().default(false),
+    maxItemsPerUser: z.number().min(1).max(100).optional()
+  }).optional(),
+  template: z.object({
+    isTemplate: z.boolean().default(false),
+    templateName: z.string().max(100).optional(),
+    fields: z.array(z.object({
+      name: z.string().min(1).max(50),
+      type: z.enum(['text', 'url', 'markdown', 'number', 'date']).default('text'),
+      required: z.boolean().default(false),
+      placeholder: z.string().max(200).optional()
+    })).optional()
+  }).optional()
+});
+
+export const createListItemSchema = z.object({
+  title: z.string().min(1).max(300),
+  content: z.string().min(1).max(5000),
+  order: z.number().default(0).optional(),
+  metadata: z.object({
+    url: z.string().url().optional(),
+    type: z.enum(['resource', 'tool', 'article', 'video', 'book', 'course', 'company', 'person', 'event', 'other']).default('resource'),
+    tags: z.array(z.string().max(50)).default([]),
+    description: z.string().max(500).optional(),
+    category: z.string().max(100).optional(),
+    rating: z.number().min(1).max(5).optional(),
+    price: z.object({
+      amount: z.number().min(0),
+      currency: z.enum(['USD', 'EUR', 'GBP', 'CAD', 'AUD']).default('USD'),
+      isFree: z.boolean().default(true)
+    }).optional(),
+    contact: z.object({
+      email: z.string().email().optional(),
+      website: z.string().url().optional(),
+      social: z.object({
+        twitter: z.string().optional(),
+        linkedin: z.string().optional(),
+        github: z.string().optional()
+      }).optional()
+    }).optional()
+  }).optional(),
+  customFields: z.record(z.any()).optional()
+});
+
+// Update schemas for partial updates
+export const updateListSchema = listSchema.partial().omit({
+  _id: true,
+  createdAt: true,
+  updatedAt: true,
+  createdBy: true
+});
+
+export const updateListItemSchema = listItemSchema.partial().omit({
+  _id: true,
+  createdAt: true,
+  updatedAt: true,
+  listId: true,
+  createdBy: true
+});
+
+// TypeScript types from Zod schemas
+export type List = z.infer<typeof listSchema>;
+export type ListItem = z.infer<typeof listItemSchema>;
+export type CreateList = z.infer<typeof createListSchema>;
+export type CreateListItem = z.infer<typeof createListItemSchema>;
+export type UpdateList = z.infer<typeof updateListSchema>;
+export type UpdateListItem = z.infer<typeof updateListItemSchema>;
+
+// List-specific filters
+export type ListFilters = {
+  category?: string;
+  tags?: string[];
+  featured?: boolean;
+  isPublic?: boolean;
+  status?: 'active' | 'archived' | 'private' | 'deleted';
+  search?: string;
+  createdBy?: string;
+};
+
+export type ListItemFilters = {
+  listId?: string;
+  type?: 'resource' | 'tool' | 'article' | 'video' | 'book' | 'course' | 'company' | 'person' | 'event' | 'other';
+  status?: 'active' | 'pending' | 'approved' | 'rejected' | 'deleted';
+  featured?: boolean;
+  search?: string;
+  createdBy?: string;
 };

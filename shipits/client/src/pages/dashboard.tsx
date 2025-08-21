@@ -215,6 +215,9 @@ export default function Dashboard() {
               {/* Desktop: Show all navigation options */}
               <div className="hidden md:flex items-center gap-2">
                 <span className="text-maroon font-medium tracking-wide">DASHBOARD</span>
+                <Link href="/lists" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
+                  LISTS
+                </Link>
                 <Link href="/profile" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
                   PROFILE
                 </Link>
@@ -243,6 +246,11 @@ export default function Dashboard() {
                 <div className="col-span-2 text-xs text-maroon font-medium px-2 py-1 bg-red-50 rounded mb-2">
                   📊 Dashboard
                 </div>
+                <Link href="/lists" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+                    LISTS
+                  </Button>
+                </Link>
                 <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
                   <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
                     PROFILE

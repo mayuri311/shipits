@@ -640,6 +640,52 @@ export const chatApi = {
     });
     return handleResponse(response);
   },
+  async updateConversation(conversationId: string, data: { name?: string; description?: string }): Promise<ApiResponse<{ conversation: Conversation }>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify(data),
+    });
+    return handleResponse(response);
+  },
+  async addParticipant(conversationId: string, userId: string): Promise<ApiResponse<{ conversation: Conversation }>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}/participants`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({ userId }),
+    });
+    return handleResponse(response);
+  },
+  async removeParticipant(conversationId: string, userId: string): Promise<ApiResponse<{ conversation: Conversation }>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}/participants/${userId}`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+  async leaveGroup(conversationId: string): Promise<ApiResponse<{ conversation: Conversation }>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}/leave`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+  async startTyping(conversationId: string): Promise<ApiResponse<{}>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}/typing`, {
+      method: 'POST',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
+  async stopTyping(conversationId: string): Promise<ApiResponse<{}>> {
+    const response = await fetch(`${API_BASE}/conversations/${conversationId}/typing`, {
+      method: 'DELETE',
+      credentials: 'include',
+    });
+    return handleResponse(response);
+  },
   stream(conversationId: string, onMessage: (event: MessageEvent) => void): EventSource {
     const es = new EventSource(`${API_BASE}/conversations/${conversationId}/stream`, { withCredentials: true } as any);
     es.onmessage = onMessage;
@@ -968,7 +1014,7 @@ export const adminApi = {
 
 // Reports API
 export const reportsApi = {
-  async createReport(payload: { targetType: 'user'|'project'|'comment'; targetId: string; reason: string; details?: string }): Promise<ApiResponse<{ reportId: string }>> {
+  async createReport(payload: { targetType: 'user'|'project'|'comment'|'listItem'; targetId: string; reason: string; details?: string }): Promise<ApiResponse<{ reportId: string }>> {
     const response = await fetch(`${API_BASE}/reports`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1155,4 +1201,16 @@ export const aiApi = {
     });
     return handleResponse(response);
   },
+};
+
+// Lists API
+export const listsApi = {
+  stream(listId: string, onMessage: (event: MessageEvent) => void): EventSource {
+    const es = new EventSource(`${API_BASE}/lists/${listId}/stream`, { withCredentials: true } as any);
+    es.onmessage = onMessage;
+    es.onerror = (error) => {
+      console.error('Lists SSE error:', error);
+    };
+    return es;
+  }
 };

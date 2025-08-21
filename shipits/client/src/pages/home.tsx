@@ -8,8 +8,11 @@ import { PartnersSection } from "@/components/sections/partners-section";
 import { Github, MessageSquare, Twitter, Linkedin, Award } from "lucide-react";
 import { useEffect, useState } from "react";
 import { projectsApi } from "@/lib/api";
+import { useI18n } from "@/contexts/I18nContext";
+import TranslatedText from "@/components/TranslatedText";
 
 export default function Home() {
+  const { t } = useI18n();
   const [leaderboard, setLeaderboard] = useState<Array<{ _id: string; username: string; fullName: string; profileImage?: string; totalPoints: number }>>([]);
   useEffect(() => {
     (async () => {
@@ -36,10 +39,19 @@ export default function Home() {
       {leaderboard.length > 0 && (
         <section className="py-10">
           <div className="container mx-auto px-4 max-w-6xl">
-            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2"><Award className="w-5 h-5 text-yellow-500" /> Trending Contributors</h2>
+            <h2 className="text-xl font-semibold mb-4 flex items-center gap-2 text-foreground">
+              <Award className="w-5 h-5 text-yellow-500" />
+              <TranslatedText
+                sourceType="ui"
+                sourceId="home-trending-contributors"
+                field="title"
+                text={t('trendingContributors', 'Trending Contributors')}
+                as="span"
+              />
+            </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               {leaderboard.map((u) => (
-                <div key={u._id} className="border border-gray-200 rounded-lg p-4 bg-white flex items-center gap-3 min-w-0">
+                <div key={u._id} className="border border-border rounded-lg p-4 bg-card flex items-center gap-3 min-w-0">
                   {u.profileImage ? (
                     <img src={u.profileImage} className="w-10 h-10 rounded-full object-cover" />
                   ) : (
@@ -48,8 +60,8 @@ export default function Home() {
                     </div>
                   )}
                   <div className="min-w-0">
-                    <div className="font-medium text-gray-900 truncate">{u.fullName || u.username}</div>
-                    <div className="text-xs text-gray-600">{u.totalPoints} pts</div>
+                    <div className="font-medium text-foreground truncate">{u.fullName || u.username}</div>
+                    <div className="text-xs text-muted-foreground">{u.totalPoints} pts</div>
                   </div>
                 </div>
               ))}
@@ -68,9 +80,23 @@ export default function Home() {
         <div className="container mx-auto px-4 max-w-6xl">
           <div className="text-center">
             <h3 className="text-xl sm:text-2xl font-bold mb-4">
-              Ship Its <span className="text-maroon">@</span> CMU
+              <TranslatedText
+                sourceType="ui"
+                sourceId="footer-shipits-cmu"
+                field="title"
+                text={t('shipItsAtCMU', 'Ship Its @ CMU')}
+                as="span"
+              />
             </h3>
-            <p className="text-gray-400 mb-6 px-4">Building the Future, One Project at a Time</p>
+            <p className="text-gray-400 mb-6 px-4">
+              <TranslatedText
+                sourceType="ui"
+                sourceId="footer-tagline"
+                field="description"
+                text={t('buildingFutureFooter', 'Building the Future, One Project at a Time')}
+                as="span"
+              />
+            </p>
             <div className="flex justify-center space-x-4 sm:space-x-6">
               <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
                 <Github size={24} />

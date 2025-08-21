@@ -71,12 +71,12 @@ export function buildVerificationEmailHtml(options: {
     <div class="card">
       <div class="header">
         <div class="brand">
-          <div class="brand-badge">S</div>
-          <div>ShipIts</div>
+          <div class="brand-badge">O</div>
+          <div>Osprey @ CMU</div>
         </div>
       </div>
       <div class="content">
-        <h1>Welcome to ShipIts, ${fullName || username}</h1>
+        <h1>Welcome to Osprey @ CMU, ${fullName || username}</h1>
         <p>To complete your account setup, please verify your email address. This keeps your account secure and ensures you receive important updates about your projects and discussions.</p>
         <p class="muted">Your account is almost ready. Click the button below to verify your email and enter the community.</p>
         <p style="margin:22px 0;">
@@ -90,17 +90,17 @@ export function buildVerificationEmailHtml(options: {
         <ul class="muted" style="margin:10px 0 0 20px; padding:0;">
           <li>Unlock posting and collaboration features</li>
           <li>Get notifications for replies, mentions, and updates</li>
-          <li>Elevated trust and credibility across ShipIts</li>
+          <li>Elevated trust and credibility across Osprey @ CMU</li>
         </ul>
 
         <div class="kpi">
           <div class="kpi-item"><div class="kpi-title">Members</div><div class="kpi-value">Elite</div></div>
           <div class="kpi-item"><div class="kpi-title">Design</div><div class="kpi-value">Executive</div></div>
-          <div class="kpi-item"><div class="kpi-title">Platform</div><div class="kpi-value">ShipIts</div></div>
+          <div class="kpi-item"><div class="kpi-title">Platform</div><div class="kpi-value">Osprey @ CMU</div></div>
         </div>
       </div>
       <div class="footer">
-        <div>Sent by ShipIts Notifications</div>
+        <div>Sent by Osprey @ CMU Notifications</div>
         <div>If you didn’t request this, you can safely ignore this email.</div>
       </div>
     </div>
@@ -142,8 +142,8 @@ export function buildCommentNotificationEmailHtml(options: {
     <div class="card">
       <div class="header">
         <div class="brand">
-          <div class="brand-badge">S</div>
-          <div>ShipIts</div>
+          <div class="brand-badge">O</div>
+          <div>Osprey @ CMU</div>
         </div>
       </div>
       <div class="content">
@@ -154,10 +154,10 @@ export function buildCommentNotificationEmailHtml(options: {
           <a href="${viewUrl}" class="btn" target="_blank" rel="noopener">View comment</a>
         </p>
         <div class="divider"></div>
-        <p class="muted">You’re receiving this email because you own this post on ShipIts.</p>
+        <p class="muted">You’re receiving this email because you own this post on Osprey @ CMU.</p>
       </div>
       <div class="footer">
-        <div>Sent by ShipIts Notifications</div>
+        <div>Sent by Osprey @ CMU Notifications</div>
         <div>If you didn’t expect this message, you can ignore it.</div>
       </div>
     </div>
@@ -200,8 +200,8 @@ export function buildPasswordResetEmailHtml(options: {
     <div class="card">
       <div class="header">
         <div class="brand">
-          <div class="brand-badge">S</div>
-          <div>ShipIts</div>
+          <div class="brand-badge">O</div>
+          <div>Osprey @ CMU</div>
         </div>
       </div>
       <div class="content">
@@ -217,7 +217,7 @@ export function buildPasswordResetEmailHtml(options: {
         <p class="muted">If you didn’t request this, you can safely ignore this email. Your account remains secure.</p>
       </div>
       <div class="footer">
-        <div>Sent by ShipIts Security</div>
+        <div>Sent by Osprey @ CMU Security</div>
       </div>
     </div>
   </div>

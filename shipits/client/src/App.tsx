@@ -20,6 +20,9 @@ import NotFound from "@/pages/not-found";
 import Guidelines from "@/pages/guidelines";
 import VerifySuccess from "@/pages/verify-success";
 import ResetPassword from "@/pages/reset-password";
+import Lists from "@/pages/lists";
+import ListDetail from "@/pages/list-detail";
+import CreateList from "@/pages/create-list";
 import OnboardingTour from "@/components/OnboardingTour";
 
 function Router() {
@@ -37,6 +40,9 @@ function Router() {
       <Route path="/verify-success" component={VerifySuccess} />
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/admin" component={AdminDashboard} />
+      <Route path="/lists" component={Lists} />
+      <Route path="/lists/create" component={CreateList} />
+      <Route path="/lists/:id" component={ListDetail} />
       <Route component={NotFound} />
     </Switch>
   );

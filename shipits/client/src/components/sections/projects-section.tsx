@@ -102,11 +102,11 @@ export function ProjectsSection() {
               </DialogTrigger>
               <DialogContent className="max-w-2xl">
                 <DialogHeader>
-                  <DialogTitle className="text-2xl font-bold">Ship Its Forum</DialogTitle>
+                  <DialogTitle className="text-2xl font-bold">Osprey @ CMU Forum</DialogTitle>
                 </DialogHeader>
                 <div className="py-6">
                   <p className="text-gray-600 mb-4">
-                    The Ship Its forum is currently under development. Here you'll be able to:
+                    The Osprey @ CMU forum is currently under development. Here you'll be able to:
                   </p>
                   <ul className="list-disc list-inside space-y-2 text-gray-600">
                     <li>Browse all student projects with detailed descriptions</li>

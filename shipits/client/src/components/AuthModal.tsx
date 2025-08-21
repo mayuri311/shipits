@@ -179,7 +179,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Join ShipIts Forum</DialogTitle>
+          <DialogTitle>Join Osprey @ CMU Forum</DialogTitle>
         </DialogHeader>
         
         <Tabs value={activeTab} onValueChange={(value: any) => setActiveTab(value)}>

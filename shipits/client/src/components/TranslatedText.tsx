@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useI18n } from '@/contexts/I18nContext';
 
-export type ShortSourceType = 'project' | 'project_update' | 'comment' | 'user' | 'message' | 'event' | 'ui';
+export type ShortSourceType = 'project' | 'project_update' | 'comment' | 'user' | 'message' | 'event' | 'ui' | 'list';
 
 export function TranslatedText({
   sourceType,

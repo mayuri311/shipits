@@ -4,12 +4,15 @@ import { useState } from "react";
 import { AuthModal } from "@/components/AuthModal";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
+import { useI18n } from "@/contexts/I18nContext";
+import TranslatedText from "@/components/TranslatedText";
 
 interface LandingSectionProps {
   onNavigate: (section: string) => void;
 }
 
 export function LandingSection({ onNavigate }: LandingSectionProps) {
+  const { t } = useI18n();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -21,37 +24,70 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
     >
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
       {/* Fixed Header Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-sm border-b border-gray-200">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-sm border-b border-border">
         <div className="container mx-auto px-4 py-2">
           <div className="flex justify-between items-center">
-            <button 
-              className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-2 py-1 text-sm sm:text-base"
+            <button
+              className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-2 py-1 text-sm sm:text-base"
               onClick={() => onNavigate("landing")}
             >
-              HOME
+              <TranslatedText
+                sourceType="ui"
+                sourceId="nav-home"
+                field="label"
+                text={t('homeNav', 'HOME')}
+                as="span"
+              />
             </button>
             
             {/* Navigation Items */}
             <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
               <Link href="/forum">
                 <Button variant="outline" size="sm" className="text-xs sm:text-sm px-2 sm:px-3">
-                  FORUM
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="nav-forum"
+                    field="label"
+                    text={t('forumNav', 'FORUM')}
+                    as="span"
+                  />
                 </Button>
               </Link>
               
               {/* Desktop: Show all navigation options */}
               <div className="hidden md:flex items-center gap-2">
-                <button 
-                  className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
+                <Link href="/lists" className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1">
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="nav-lists"
+                    field="label"
+                    text={t('listsNav', 'LISTS')}
+                    as="span"
+                  />
+                </Link>
+                <button
+                  className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
                   onClick={() => onNavigate("contact")}
                 >
-                  CONTACT
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="nav-contact"
+                    field="label"
+                    text={t('contactNav', 'CONTACT')}
+                    as="span"
+                  />
                 </button>
-                <button 
-                  className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
+                <button
+                  className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
                   onClick={() => onNavigate("partners")}
                 >
-                  PARTNERS
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="nav-partners"
+                    field="label"
+                    text={t('partnersNav', 'PARTNERS')}
+                    as="span"
+                  />
                 </button>
               </div>
 
@@ -70,19 +106,42 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
           
           {/* Mobile Extended Menu */}
           {isMenuOpen && (
-            <div className="border-t border-gray-200 mt-2 pt-3 pb-2 md:hidden">
+            <div className="border-t border-border mt-2 pt-3 pb-2 md:hidden">
               <div className="grid grid-cols-2 gap-2">
-                <button 
-                  className="flex items-center justify-start px-3 py-2 text-xs text-black hover:text-maroon hover:bg-gray-50 transition-colors rounded"
+                <Link href="/lists" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="mobile-nav-lists"
+                      field="label"
+                      text={t('listsNav', 'LISTS')}
+                      as="span"
+                    />
+                  </Button>
+                </Link>
+                <button
+                  className="flex items-center justify-start px-3 py-2 text-xs text-foreground hover:text-maroon hover:bg-accent transition-colors rounded"
                   onClick={() => { onNavigate("contact"); setIsMenuOpen(false); }}
                 >
-                  CONTACT
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="mobile-nav-contact"
+                    field="label"
+                    text={t('contactNav', 'CONTACT')}
+                    as="span"
+                  />
                 </button>
-                <button 
-                  className="flex items-center justify-start px-3 py-2 text-xs text-black hover:text-maroon hover:bg-gray-50 transition-colors rounded"
+                <button
+                  className="flex items-center justify-start px-3 py-2 text-xs text-foreground hover:text-maroon hover:bg-accent transition-colors rounded"
                   onClick={() => { onNavigate("partners"); setIsMenuOpen(false); }}
                 >
-                  PARTNERS
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="mobile-nav-partners"
+                    field="label"
+                    text={t('partnersNav', 'PARTNERS')}
+                    as="span"
+                  />
                 </button>
               </div>
             </div>
@@ -93,11 +152,23 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
       {/* Central Title */}
       <div className="flex-1 flex items-center justify-center text-center pt-20 px-4">
         <div className="animate-float">
-          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-8xl font-bold tracking-tight mb-4">
-            Ship Its <span className="text-maroon">@</span> CMU
+          <h1 className="text-4xl sm:text-5xl md:text-6xl lg:text-8xl font-bold tracking-tight mb-4 text-foreground">
+            <TranslatedText
+              sourceType="ui"
+              sourceId="landing-title"
+              field="title"
+              text={t('shipItsAtCMU', 'Ship Its @ CMU')}
+              as="span"
+            />
           </h1>
-          <p className="text-lg sm:text-xl md:text-2xl text-gray-600 font-light max-w-2xl mx-auto">
-            Building the Future, One Project at a Time
+          <p className="text-lg sm:text-xl md:text-2xl text-muted-foreground font-light max-w-2xl mx-auto">
+            <TranslatedText
+              sourceType="ui"
+              sourceId="landing-subtitle"
+              field="description"
+              text={t('buildingFuture', 'Building the Future, One Project at a Time')}
+              as="span"
+            />
           </p>
         </div>
       </div>

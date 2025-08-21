@@ -1,6 +1,6 @@
-# MongoDB Integration Guide for ShipIts Forum
+# MongoDB Integration Guide for Osprey @ CMU Forum
 
-This guide covers the comprehensive MongoDB setup for the ShipIts Forum application.
+This guide covers the comprehensive MongoDB setup for the Osprey @ CMU Forum application.
 
 ## 🚀 Quick Start
 
@@ -438,6 +438,6 @@ npm run test:models
 
 ## 🔄 Migration Path
 
-This implementation provides a complete transition from the previous PostgreSQL/Drizzle setup to MongoDB/Mongoose, maintaining all existing functionality while adding comprehensive new features for the ShipIts Forum community.
+This implementation provides a complete transition from the previous PostgreSQL/Drizzle setup to MongoDB/Mongoose, maintaining all existing functionality while adding comprehensive new features for the Osprey @ CMU Forum community.
 
 The system is designed to scale with the growing CMU student community and supports all the outlined requirements including authentication, project management, forum discussions, event management, and advanced analytics.

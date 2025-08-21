@@ -19,10 +19,12 @@ import TranslatedText from "@/components/TranslatedText";
 import TranslatedMarkdown from "@/components/TranslatedMarkdown";
 import { truncateMarkdown } from "@/lib/markdownUtils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { useI18n } from "@/contexts/I18nContext";
 
 const sortOptions = ["Featured", "Most Recent", "Most Viewed", "Trending"];
 
 export default function Forum() {
+  const { t } = useI18n();
   const { user, isAuthenticated, logout } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -269,7 +271,7 @@ export default function Forum() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background">
       <AuthModal isOpen={isAuthModalOpen} onClose={() => setIsAuthModalOpen(false)} />
       <ConfirmDialog
         isOpen={deleteConfirm.isOpen}
@@ -281,17 +283,49 @@ export default function Forum() {
         cancelText="Cancel"
         variant="destructive"
       />
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-sm border-b border-gray-200">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-background/90 backdrop-blur-sm border-b border-border">
         <div className="container mx-auto px-4 py-2">
           <div className="flex justify-between items-center">
             {/* Left side - Navigation */}
             <div className="flex items-center gap-2 sm:gap-4 lg:gap-6">
-              <Link href="/" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide text-sm sm:text-base">
-                HOME
+              <Link href="/" className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide text-sm sm:text-base">
+                <TranslatedText
+                  sourceType="ui"
+                  sourceId="forum-nav-home"
+                  field="label"
+                  text={t('homeNav', 'HOME')}
+                  as="span"
+                />
               </Link>
-              <span className="text-maroon font-medium tracking-wide text-sm sm:text-base">FORUM</span>
-              <Link href="/#contact" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide text-sm sm:text-base hidden sm:inline">
-                CONTACT
+              <span className="text-maroon font-medium tracking-wide text-sm sm:text-base">
+                <TranslatedText
+                  sourceType="ui"
+                  sourceId="forum-nav-forum"
+                  field="label"
+                  text={t('forumNav', 'FORUM')}
+                  as="span"
+                />
+              </span>
+              <Link href="/lists">
+                <Button size="sm" className="bg-blue-600 hover:bg-blue-700 text-white text-xs sm:text-sm px-3 sm:px-4 py-2 font-medium">
+                  <MessageSquare className="w-4 h-4 mr-2" />
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="forum-nav-lists"
+                    field="label"
+                    text={t('listsNav', 'LISTS')}
+                    as="span"
+                  />
+                </Button>
+              </Link>
+              <Link href="/#contact" className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide text-sm sm:text-base hidden sm:inline">
+                <TranslatedText
+                  sourceType="ui"
+                  sourceId="forum-nav-contact"
+                  field="label"
+                  text={t('contactNav', 'CONTACT')}
+                  as="span"
+                />
               </Link>
             </div>
 
@@ -301,7 +335,7 @@ export default function Forum() {
               {isAuthenticated ? (
                 <>
                   <NotificationBell />
-                  <span className="text-xs text-gray-600 hidden lg:inline mr-2">
+                  <span className="text-xs text-muted-foreground hidden lg:inline mr-2">
                     {user?.fullName || user?.username}
                   </span>
                   
@@ -310,38 +344,74 @@ export default function Forum() {
                     <Link href="/chat">
                       <Button variant="outline" size="sm">
                         <MessageSquare className="w-4 h-4 mr-2" />
-                        Chat
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-nav-chat"
+                          field="label"
+                          text={t('chatNav', 'Chat')}
+                          as="span"
+                        />
                       </Button>
                     </Link>
                     <Link href="/create-project">
                       <Button className="bg-maroon hover:bg-maroon/90 text-white" size="sm">
                         <Plus className="w-4 h-4 mr-2" />
-                        Create Project
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-nav-create-project"
+                          field="label"
+                          text={t('createProjectNav', 'Create Project')}
+                          as="span"
+                        />
                       </Button>
                     </Link>
                     <Link href="/dashboard">
                       <Button variant="outline" size="sm">
                         <BarChart3 className="w-4 h-4 mr-2" />
-                        Dashboard
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-nav-dashboard"
+                          field="label"
+                          text={t('dashboardNav', 'Dashboard')}
+                          as="span"
+                        />
                       </Button>
                     </Link>
                     <Link href="/profile">
                       <Button variant="outline" size="sm">
                         <UserCircle className="w-4 h-4 mr-2" />
-                        Profile
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-nav-profile"
+                          field="label"
+                          text={t('profileNav', 'Profile')}
+                          as="span"
+                        />
                       </Button>
                     </Link>
                     {user?.role === 'admin' && (
                       <Link href="/admin">
                         <Button variant="outline" size="sm" className="border-indigo-200 text-indigo-700 hover:bg-indigo-50">
                           <Crown className="w-4 h-4 mr-2" />
-                          Admin
+                          <TranslatedText
+                            sourceType="ui"
+                            sourceId="forum-nav-admin"
+                            field="label"
+                            text={t('adminNav', 'Admin')}
+                            as="span"
+                          />
                         </Button>
                       </Link>
                     )}
                     <Button variant="outline" size="sm" onClick={logout} className="text-red-600 hover:text-red-700 hover:bg-red-50">
                       <LogOut className="w-4 h-4 mr-2" />
-                      Logout
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-nav-logout"
+                        field="label"
+                        text={t('logoutNav', 'Logout')}
+                        as="span"
+                      />
                     </Button>
                   </div>
 
@@ -355,7 +425,15 @@ export default function Forum() {
                     <Link href="/create-project">
                       <Button className="bg-maroon hover:bg-maroon/90 text-white text-xs px-2 py-1" size="sm">
                         <Plus className="w-3 h-3 sm:w-4 sm:h-4 sm:mr-1" />
-                        <span className="hidden sm:inline">Create</span>
+                        <span className="hidden sm:inline">
+                          <TranslatedText
+                            sourceType="ui"
+                            sourceId="forum-mobile-create"
+                            field="label"
+                            text={t('createProject', 'Create Project')}
+                            as="span"
+                          />
+                        </span>
                       </Button>
                     </Link>
                     <Button 
@@ -374,17 +452,35 @@ export default function Forum() {
                   {/* Desktop: Show all options */}
                   <div className="hidden md:flex items-center gap-2">
                     <Button variant="outline" size="sm" onClick={() => setIsAuthModalOpen(true)}>
-                      Log in with CMU
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-login-cmu"
+                        field="label"
+                        text={t('loginWithCMU', 'Log in with CMU')}
+                        as="span"
+                      />
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setIsAuthModalOpen(true)}>
-                      Demo Login
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-demo-login"
+                        field="label"
+                        text={t('demoLogin', 'Demo Login')}
+                        as="span"
+                      />
                     </Button>
                   </div>
 
                   {/* Mobile/Tablet: Compact view */}
                   <div className="flex md:hidden items-center gap-1">
                     <Button variant="outline" size="sm" onClick={() => setIsAuthModalOpen(true)} className="text-xs px-2">
-                      Login
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-mobile-login"
+                        field="label"
+                        text={t('login', 'Login')}
+                        as="span"
+                      />
                     </Button>
                     <Button 
                       variant="outline" 
@@ -403,45 +499,87 @@ export default function Forum() {
 
           {/* Expandable Menu for Mobile/Tablet only */}
           {isMenuOpen && (
-            <div className="border-t border-gray-200 mt-2 pt-3 pb-2 lg:hidden">
+            <div className="border-t border-border mt-2 pt-3 pb-2 lg:hidden">
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                 {isAuthenticated ? (
                   <>
                     <Link href="/dashboard" onClick={() => setIsMenuOpen(false)}>
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
                         <BarChart3 className="w-3 h-3 mr-2" />
-                        Dashboard
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-menu-dashboard"
+                          field="label"
+                          text={t('dashboardNav', 'Dashboard')}
+                          as="span"
+                        />
+                      </Button>
+                    </Link>
+                    <Link href="/lists" onClick={() => setIsMenuOpen(false)}>
+                      <Button className="w-full justify-start text-xs bg-blue-600 hover:bg-blue-700 text-white">
+                        <MessageSquare className="w-3 h-3 mr-2" />
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-menu-lists"
+                          field="label"
+                          text={t('listsNav', 'Lists')}
+                          as="span"
+                        />
                       </Button>
                     </Link>
                     <Link href="/profile" onClick={() => setIsMenuOpen(false)}>
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
                         <UserCircle className="w-3 h-3 mr-2" />
-                        Profile
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-menu-profile"
+                          field="label"
+                          text={t('profileNav', 'Profile')}
+                          as="span"
+                        />
                       </Button>
                     </Link>
                     <Link href="/#contact" onClick={() => setIsMenuOpen(false)} className="sm:hidden">
                       <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
-                        Contact
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-menu-contact"
+                          field="label"
+                          text={t('contactNav', 'Contact')}
+                          as="span"
+                        />
                       </Button>
                     </Link>
                     {user?.role === 'admin' && (
                       <Link href="/admin" onClick={() => setIsMenuOpen(false)}>
                         <Button variant="ghost" size="sm" className="w-full justify-start text-xs border-indigo-200 text-indigo-700 hover:bg-indigo-50">
                           <Crown className="w-3 h-3 mr-2" />
-                          Admin
+                          <TranslatedText
+                            sourceType="ui"
+                            sourceId="forum-menu-admin"
+                            field="label"
+                            text={t('adminNav', 'Admin')}
+                            as="span"
+                          />
                         </Button>
                       </Link>
                     )}
-                    <Button 
-                      variant="ghost" 
-                      size="sm" 
-                      className="w-full justify-start text-xs text-red-600 hover:text-red-700 hover:bg-red-50" 
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="w-full justify-start text-xs text-red-600 hover:text-red-700 hover:bg-red-50"
                       onClick={() => { logout(); setIsMenuOpen(false); }}
                     >
                       <LogOut className="w-3 h-3 mr-2" />
-                      Logout
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-menu-logout"
+                        field="label"
+                        text={t('logoutNav', 'Logout')}
+                        as="span"
+                      />
                     </Button>
-                    <div className="col-span-2 sm:col-span-3 text-xs text-gray-600 px-2 py-1 bg-gray-50 rounded">
+                    <div className="col-span-2 sm:col-span-3 text-xs text-muted-foreground px-2 py-1 bg-muted rounded">
                       👋 {user?.fullName || user?.username}
                     </div>
                   </>
@@ -453,7 +591,13 @@ export default function Forum() {
                       </Button>
                     </Link>
                     <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => { setIsAuthModalOpen(true); setIsMenuOpen(false); }}>
-                      Demo Login
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-menu-demo-login"
+                        field="label"
+                        text={t('demoLogin', 'Demo Login')}
+                        as="span"
+                      />
                     </Button>
                   </>
                 )}
@@ -466,23 +610,34 @@ export default function Forum() {
       <div className="pt-24 pb-16">
         <div className="container mx-auto px-2 sm:px-4 md:px-6">
           <div className="text-center mb-8 px-4">
-            <h1 className="text-3xl sm:text-4xl font-bold text-gray-900 mb-4">
-              ShipIts Forum
+            <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">
+              <TranslatedText
+                sourceType="ui"
+                sourceId="forum-hero-title"
+                field="title"
+                text={t('shipItsForum', 'ShipIts Forum')}
+                as="span"
+              />
             </h1>
-            <p className="text-lg sm:text-xl text-gray-600 max-w-3xl mx-auto">
-              Discover and support innovative projects from the Carnegie Mellon community.
-              Share your creations, get feedback, and collaborate with fellow students.
+            <p className="text-lg sm:text-xl text-muted-foreground max-w-3xl mx-auto">
+              <TranslatedText
+                sourceType="ui"
+                sourceId="forum-hero-description"
+                field="description"
+                text={t('discoverSupportProjects', 'Discover and support innovative projects from the Carnegie Mellon community. Share your creations, get feedback, and collaborate with fellow students.')}
+                as="span"
+              />
             </p>
           </div>
 
-          <div className="bg-white rounded-lg shadow-sm p-4 mb-8">
+          <div className="bg-card rounded-lg shadow-sm p-4 mb-8 border border-border">
             <div className="space-y-4">
               {/* Search Bar - Full Width */}
               <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-4 h-4" />
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground w-4 h-4" />
                 <Input
                   type="text"
-                  placeholder="Search projects and tags..."
+                  placeholder={t('searchProjectsTags', 'Search projects and tags...')}
                   value={searchTerm}
                   onChange={(e) => {
                     const v = e.target.value;
@@ -492,15 +647,31 @@ export default function Forum() {
                   className="pl-10"
                 />
                 {acOpen && searchTerm && (
-                  <div className="absolute z-20 mt-1 w-full bg-white border rounded shadow">
-                    <div className="p-2 text-xs text-gray-500">Suggestions</div>
+                  <div className="absolute z-20 mt-1 w-full bg-popover border border-border rounded shadow-lg">
+                    <div className="p-2 text-xs text-muted-foreground">
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-suggestions"
+                        field="label"
+                        text={t('suggestions', 'Suggestions')}
+                        as="span"
+                      />
+                    </div>
                     <div className="max-h-72 overflow-auto">
                       {acItems.tags?.length > 0 && (
                         <div className="p-2">
-                          <div className="text-xs font-medium text-gray-600 mb-1">Tags</div>
+                          <div className="text-xs font-medium text-muted-foreground mb-1">
+                            <TranslatedText
+                              sourceType="ui"
+                              sourceId="forum-autocomplete-tags"
+                              field="label"
+                              text={t('popularTags', 'Popular Tags')}
+                              as="span"
+                            />
+                          </div>
                           <div className="flex flex-wrap gap-2">
                             {acItems.tags.slice(0,8).map((t:any) => (
-                              <button key={t.tag} className="text-sm px-2 py-1 bg-gray-100 rounded hover:bg-gray-200" onClick={() => { handleTagClick(t.tag); setAcOpen(false); }}>
+                              <button key={t.tag} className="text-sm px-2 py-1 bg-muted rounded hover:bg-accent" onClick={() => { handleTagClick(t.tag); setAcOpen(false); }}>
                                 #{t.tag}
                               </button>
                             ))}
@@ -509,11 +680,19 @@ export default function Forum() {
                       )}
                       {acItems.projects?.length > 0 && (
                         <div className="p-2">
-                          <div className="text-xs font-medium text-gray-600 mb-1">Projects</div>
+                          <div className="text-xs font-medium text-muted-foreground mb-1">
+                            <TranslatedText
+                              sourceType="ui"
+                              sourceId="forum-autocomplete-projects"
+                              field="label"
+                              text={t('projects', 'Projects')}
+                              as="span"
+                            />
+                          </div>
                           <ul>
                             {acItems.projects.slice(0,5).map((p:any) => (
                               <li key={p._id} className="py-1">
-                                <a href={`/project/${p._id}`} className="text-sm text-blue-600 hover:underline" onClick={() => setAcOpen(false)}>{p.title}</a>
+                                <a href={`/project/${p._id}`} className="text-sm text-primary hover:underline" onClick={() => setAcOpen(false)}>{p.title}</a>
                               </li>
                             ))}
                           </ul>
@@ -521,25 +700,50 @@ export default function Forum() {
                       )}
                       {acItems.users?.length > 0 && (
                         <div className="p-2">
-                          <div className="text-xs font-medium text-gray-600 mb-1">Users</div>
+                          <div className="text-xs font-medium text-muted-foreground mb-1">
+                            <TranslatedText
+                              sourceType="ui"
+                              sourceId="forum-autocomplete-users"
+                              field="label"
+                              text={t('users', 'Users')}
+                              as="span"
+                            />
+                          </div>
                           <ul>
                             {acItems.users.slice(0,5).map((u:any) => (
-                              <li key={u._id} className="py-1 text-sm text-gray-700">{u.fullName || u.username}</li>
+                              <li key={u._id} className="py-1 text-sm text-foreground">{u.fullName || u.username}</li>
                             ))}
                           </ul>
                         </div>
                       )}
                       {acItems.tags?.length === 0 && acItems.projects?.length === 0 && acItems.users?.length === 0 && (
-                        <div className="p-2 text-sm text-gray-500">No suggestions</div>
+                        <div className="p-2 text-sm text-muted-foreground">
+                          <TranslatedText
+                            sourceType="ui"
+                            sourceId="forum-no-suggestions"
+                            field="label"
+                            text={t('noSuggestions', 'No suggestions')}
+                            as="span"
+                          />
+                        </div>
                       )}
                     </div>
                   </div>
                 )}
               </div>
               {suggestion && (
-                <div className="text-sm text-gray-600">Did you mean <button className="text-blue-600 hover:underline" onClick={() => setSearchTerm(suggestion!)}>{suggestion}</button>? {alternates.length>0 && alternates.map((a,idx)=> (
-                  <button key={idx} className="ml-2 text-blue-600 hover:underline" onClick={() => setSearchTerm(a)}>{a}</button>
-                ))}
+                <div className="text-sm text-muted-foreground">
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="forum-did-you-mean"
+                    field="label"
+                    text={t('didYouMean', 'Did you mean')}
+                    as="span"
+                  />{' '}
+                  <button className="text-primary hover:underline" onClick={() => setSearchTerm(suggestion!)}>{suggestion}</button>?
+                  {alternates.length>0 && alternates.map((a,idx)=> (
+                    <button key={idx} className="ml-2 text-primary hover:underline" onClick={() => setSearchTerm(a)}>{a}</button>
+                  ))}
                 </div>
               )}
 
@@ -551,12 +755,18 @@ export default function Forum() {
                     onClick={() => setShowFollowingFeed(!showFollowingFeed)}
                     className={showFollowingFeed ? 'bg-maroon hover:bg-maroon/90 text-white' : ''}
                   >
-                    {showFollowingFeed ? 'Following Feed' : 'All Projects'}
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="forum-feed-toggle"
+                      field="label"
+                      text={showFollowingFeed ? t('followingFeed', 'Following Feed') : t('allProjects', 'All Projects')}
+                      as="span"
+                    />
                   </Button>
                 )}
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                   <SelectTrigger className="w-full sm:w-48">
-                    <SelectValue />
+                    <SelectValue placeholder={t('category', 'Category')} />
                   </SelectTrigger>
                   <SelectContent>
                     {categories.map((category) => (
@@ -569,14 +779,31 @@ export default function Forum() {
 
                 <Select value={sortBy} onValueChange={setSortBy}>
                   <SelectTrigger className="w-full sm:w-48">
-                    <SelectValue />
+                    <SelectValue placeholder={t('sortBy', 'Sort by')} />
                   </SelectTrigger>
                   <SelectContent>
-                    {sortOptions.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
+                    {sortOptions.map((option) => {
+                      let translatedOption = option;
+                      switch (option) {
+                        case 'Featured':
+                          translatedOption = t('featured', 'Featured');
+                          break;
+                        case 'Most Recent':
+                          translatedOption = t('mostRecent', 'Most Recent');
+                          break;
+                        case 'Most Viewed':
+                          translatedOption = t('mostViewed', 'Most Viewed');
+                          break;
+                        case 'Trending':
+                          translatedOption = t('trending', 'Trending');
+                          break;
+                      }
+                      return (
+                        <SelectItem key={option} value={option}>
+                          {translatedOption}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               </div>
@@ -584,36 +811,50 @@ export default function Forum() {
               {/* Active Filters */}
               {(selectedTags.length > 0 || selectedCategory !== "All" || searchTerm) && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-gray-600">Active filters:</span>
+                  <span className="text-sm text-muted-foreground">
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="forum-active-filters"
+                      field="label"
+                      text={t('activeFilters', 'Active filters')}
+                      as="span"
+                    />:
+                  </span>
                   {selectedTags.map((tag) => (
                     <button
                       key={tag}
-                      className="inline-flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs cursor-pointer hover:bg-blue-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2"
+                      className="inline-flex items-center gap-1 px-2 py-1 bg-primary/10 text-primary rounded-full text-xs cursor-pointer hover:bg-primary/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
                       onClick={() => removeTag(tag)}
                       aria-label={`Remove tag filter: ${tag}`}
                       title={`Remove tag filter: ${tag}`}
                     >
                       #{tag}
-                      <span className="ml-1 hover:text-blue-900" aria-hidden="true">×</span>
+                      <span className="ml-1 hover:text-primary/80" aria-hidden="true">×</span>
                     </button>
                   ))}
                   {selectedCategory !== "All" && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-muted text-muted-foreground rounded-full text-xs">
                       Category: {selectedCategory}
                     </span>
                   )}
                   {searchTerm && (
-                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-800 rounded-full text-xs">
+                    <span className="inline-flex items-center gap-1 px-2 py-1 bg-muted text-muted-foreground rounded-full text-xs">
                       Search: {searchTerm}
                     </span>
                   )}
                   <button
                     onClick={clearAllFilters}
-                    className="text-xs text-gray-500 hover:text-gray-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-gray-500 focus-visible:ring-offset-2 rounded px-1 py-1"
-                    aria-label="Clear all filters"
-                    title="Clear all active filters"
+                    className="text-xs text-muted-foreground hover:text-foreground underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded px-1 py-1"
+                    aria-label={t('clearAll', 'Clear all')}
+                    title={t('clearAll', 'Clear all')}
                   >
-                    Clear all
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="forum-clear-all"
+                      field="label"
+                      text={t('clearAll', 'Clear all')}
+                      as="span"
+                    />
                   </button>
                 </div>
               )}
@@ -621,15 +862,23 @@ export default function Forum() {
               {/* Popular Tags */}
               {popularTags.length > 0 && (
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-sm text-gray-600">Popular tags:</span>
+                  <span className="text-sm text-muted-foreground">
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="forum-popular-tags"
+                      field="label"
+                      text={t('popularTags', 'Popular tags')}
+                      as="span"
+                    />:
+                  </span>
                   {popularTags.slice(0, 10).map((tagData: any) => (
                     <button
                       key={tagData.tag}
                       onClick={() => handleTagClick(tagData.tag)}
                       className={`px-2 py-1 rounded-full text-xs transition-colors ${
                         selectedTags.includes(tagData.tag.toLowerCase())
-                          ? 'bg-blue-100 text-blue-800 hover:bg-blue-200'
-                          : 'bg-gray-50 text-gray-600 hover:bg-gray-100 border border-gray-200'
+                          ? 'bg-primary/10 text-primary hover:bg-primary/20'
+                          : 'bg-muted text-muted-foreground hover:bg-accent border border-border'
                       }`}
                     >
                       #{tagData.tag} ({tagData.count})
@@ -641,14 +890,14 @@ export default function Forum() {
           </div>
 
           {isAuthenticated && recommendedData?.success && recommendedData.data.projects.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm p-4 mb-8">
-              <h2 className="text-lg font-semibold mb-3">Recommended for you</h2>
+            <div className="bg-card rounded-lg shadow-sm p-4 mb-8 border border-border">
+              <h2 className="text-lg font-semibold mb-3 text-foreground">Recommended for you</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {recommendedData.data.projects.map((p: Project) => (
-                  <Link key={p._id} href={`/forum/project/${p._id}`} className="border rounded-lg p-3 hover:shadow">
-                    <div className="font-medium mb-1">{p.title}</div>
-                    <div className="text-xs text-gray-500 mb-2">by {typeof p.ownerId === 'object' ? (p.ownerId.fullName || p.ownerId.username) : ''}</div>
-                    <div className="text-xs text-gray-600">{p.tags?.slice(0,3).map(t=>`#${t}`).join(' ')}</div>
+                  <Link key={p._id} href={`/forum/project/${p._id}`} className="border border-border rounded-lg p-3 hover:shadow">
+                    <div className="font-medium mb-1 text-foreground">{p.title}</div>
+                    <div className="text-xs text-muted-foreground mb-2">by {typeof p.ownerId === 'object' ? (p.ownerId.fullName || p.ownerId.username) : ''}</div>
+                    <div className="text-xs text-muted-foreground">{p.tags?.slice(0,3).map(t=>`#${t}`).join(' ')}</div>
                   </Link>
                 ))}
               </div>
@@ -656,14 +905,14 @@ export default function Forum() {
           )}
 
           {trendingData?.success && trendingData.data.projects.length > 0 && (
-            <div className="bg-white rounded-lg shadow-sm p-4 mb-8">
-              <h2 className="text-lg font-semibold mb-3">Trending projects</h2>
+            <div className="bg-card rounded-lg shadow-sm p-4 mb-8 border border-border">
+              <h2 className="text-lg font-semibold mb-3 text-foreground">Trending projects</h2>
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                 {trendingData.data.projects.slice(0, 3).map((p: Project) => (
-                  <Link key={p._id} href={`/forum/project/${p._id}`} className="border rounded-lg p-3 hover:shadow">
-                    <div className="font-medium mb-1">{p.title}</div>
-                    <div className="text-xs text-gray-500 mb-2">by {typeof p.ownerId === 'object' ? (p.ownerId.fullName || p.ownerId.username) : ''}</div>
-                    <div className="text-xs text-gray-600">{p.tags?.slice(0,3).map(t=>`#${t}`).join(' ')}</div>
+                  <Link key={p._id} href={`/forum/project/${p._id}`} className="border border-border rounded-lg p-3 hover:shadow">
+                    <div className="font-medium mb-1 text-foreground">{p.title}</div>
+                    <div className="text-xs text-muted-foreground mb-2">by {typeof p.ownerId === 'object' ? (p.ownerId.fullName || p.ownerId.username) : ''}</div>
+                    <div className="text-xs text-muted-foreground">{p.tags?.slice(0,3).map(t=>`#${t}`).join(' ')}</div>
                   </Link>
                 ))}
               </div>
@@ -671,28 +920,28 @@ export default function Forum() {
           )}
 
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-4 mb-8">
-              <p className="text-red-800">Error: {(error as Error).message}</p>
+            <div className="bg-destructive/10 border border-destructive/20 rounded-lg p-4 mb-8">
+              <p className="text-destructive">Error: {(error as Error).message}</p>
             </div>
           )}
 
           {(isFetching || (showFollowingFeed && isFeedFetching)) ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[...Array(6)].map((_, i) => (
-                <div key={i} className="bg-white rounded-lg shadow-sm animate-pulse">
-                  <div className="h-48 bg-gray-200 rounded-t-lg"></div>
+                <div key={i} className="bg-card rounded-lg shadow-sm animate-pulse border border-border">
+                  <div className="h-48 bg-muted rounded-t-lg"></div>
                   <div className="p-6">
-                    <div className="h-4 bg-gray-200 rounded mb-2"></div>
-                    <div className="h-4 bg-gray-200 rounded w-3/4 mb-4"></div>
-                    <div className="h-3 bg-gray-200 rounded w-1/2"></div>
+                    <div className="h-4 bg-muted rounded mb-2"></div>
+                    <div className="h-4 bg-muted rounded w-3/4 mb-4"></div>
+                    <div className="h-3 bg-muted rounded w-1/2"></div>
                   </div>
                 </div>
               ))}
             </div>
           ) : displayProjects.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-gray-500 text-lg mb-4">No projects found</p>
-              <p className="text-gray-400">Try adjusting your search criteria or create a new project!</p>
+              <p className="text-muted-foreground text-lg mb-4">No projects found</p>
+              <p className="text-muted-foreground/70">Try adjusting your search criteria or create a new project!</p>
               {isAuthenticated && (
                 <Link href="/create-project">
                   <Button className="mt-4 bg-maroon hover:bg-maroon/90">
@@ -709,7 +958,7 @@ export default function Forum() {
                   // Find the first video media, if any
                   const firstVideo = project.media?.find((media) => media.type === 'video');
                   return (
-                    <li key={project._id} className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 relative flex flex-col h-full">
+                    <li key={project._id} className="bg-card rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 relative flex flex-col h-full border border-border">
                     {user?.role === 'admin' && (
                       <Button
                         variant="destructive"
@@ -754,7 +1003,7 @@ export default function Forum() {
                         )}
                       </div>
                       <div className="p-6">
-                        <h3 className="text-base sm:text-lg font-semibold text-gray-900 mb-2 line-clamp-2">
+                        <h3 className="text-base sm:text-lg font-semibold text-foreground mb-2 line-clamp-2">
                           <TranslatedText
                             sourceType="project"
                             sourceId={project._id}
@@ -763,7 +1012,7 @@ export default function Forum() {
                             as="span"
                           />
                         </h3>
-                        <div className="text-gray-600 text-xs sm:text-sm mb-4 line-clamp-3">
+                        <div className="text-muted-foreground text-xs sm:text-sm mb-4 line-clamp-3">
                           <TranslatedMarkdown
                             sourceType="project"
                             sourceId={project._id}
@@ -771,7 +1020,7 @@ export default function Forum() {
                             text={truncateMarkdown(project.description)}
                           />
                         </div>
-                        <div className="flex flex-col sm:flex-row items-center justify-between text-xs sm:text-sm text-gray-500 mb-3 gap-1 sm:gap-0">
+                        <div className="flex flex-col sm:flex-row items-center justify-between text-xs sm:text-sm text-muted-foreground mb-3 gap-1 sm:gap-0">
                           <span>By {project.ownerId?.fullName || project.ownerId?.username}</span>
                           <span>{formatDate(project.createdAt)}</span>
                         </div>
@@ -785,15 +1034,15 @@ export default function Forum() {
                                 <Users className="w-3 h-3" />
                                 Collaborative
                               </span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted-foreground">
                                 +{project.collaborators.length} collaborator{project.collaborators.length !== 1 ? 's' : ''}
                               </span>
                             </div>
-                            
+
                             {/* Collaborator Avatars - Mobile Optimized */}
                             <div className="flex items-center gap-2">
-                              <span className="text-xs text-gray-600 hidden sm:inline">Team:</span>
-                              <span className="text-xs text-gray-600 sm:hidden">👥</span>
+                              <span className="text-xs text-muted-foreground hidden sm:inline">Team:</span>
+                              <span className="text-xs text-muted-foreground sm:hidden">👥</span>
                               <div className="flex items-center -space-x-1">
                                 {/* Owner Avatar */}
                                 <Avatar className="w-6 h-6 sm:w-5 sm:h-5 border-2 border-white shadow-sm">
@@ -845,8 +1094,8 @@ export default function Forum() {
                                 }}
                                 className={`px-2 py-1 rounded-full text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
                                   selectedTags.includes(tag.toLowerCase())
-                                    ? 'bg-blue-100 text-blue-800 hover:bg-blue-200 focus-visible:ring-blue-500'
-                                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200 focus-visible:ring-gray-500'
+                                    ? 'bg-primary/10 text-primary hover:bg-primary/20 focus-visible:ring-primary'
+                                    : 'bg-muted text-muted-foreground hover:bg-accent focus-visible:ring-ring'
                                 }`}
                                 aria-label={`${selectedTags.includes(tag.toLowerCase()) ? 'Remove' : 'Add'} tag filter: ${tag}`}
                                 title={`${selectedTags.includes(tag.toLowerCase()) ? 'Remove' : 'Add'} tag filter: ${tag}`}
@@ -858,7 +1107,7 @@ export default function Forum() {
                         )}
                         
                         {/* Project Statistics */}
-                        <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
                           <div className="flex items-center gap-1">
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -879,7 +1128,7 @@ export default function Forum() {
                             <span>{project.analytics?.views || 0}</span>
                           </div>
                           {project.collaborators && project.collaborators.length > 0 && (
-                            <div className="flex items-center gap-1" title={`${project.collaborators.length + 1} team members (including owner)`}>
+                            <div className="flex items-center gap-1 text-muted-foreground" title={`${project.collaborators.length + 1} team members (including owner)`}>
                               <Users className="w-4 h-4" />
                               <span>{project.collaborators.length + 1}</span>
                             </div>

@@ -14,7 +14,7 @@ type Step = {
 };
 
 const DEFAULT_STEPS: Step[] = [
-  { id: 'welcome', title: 'Welcome to ShipIts', description: 'Let’s take a quick tour of creating, discussing, and tracking projects.', placement: 'center' },
+  { id: 'welcome', title: 'Welcome to Osprey @ CMU', description: 'Let’s take a quick tour of creating, discussing, and tracking projects.', placement: 'center' },
   { id: 'create-project', selector: 'a[href="/create-project"],button:has(svg[data-lucide="plus"])', title: 'Create Project', description: 'Showcase your work with images, videos, and markdown.', placement: 'bottom' },
   { id: 'forum', selector: 'a[href="/forum"]', title: 'Forum', description: 'Discover and discuss trending and recommended projects.', placement: 'bottom' },
   { id: 'dashboard', selector: 'a[href="/dashboard"],button:has(svg[data-lucide="bar-chart-3"])', title: 'Dashboard', description: 'Track your projects, stats, and notifications in one place.', placement: 'bottom' },

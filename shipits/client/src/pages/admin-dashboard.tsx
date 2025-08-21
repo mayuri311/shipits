@@ -96,7 +96,7 @@ export default function AdminDashboard() {
     {
       id: '1',
       type: 'assistant',
-      content: 'Hello! I\'m your ShipIts AI Analytics Agent. I can help you analyze platform data, user engagement, project trends, and much more. What would you like to know?',
+      content: 'Hello! I\'m your Osprey @ CMU AI Analytics Agent. I can help you analyze platform data, user engagement, project trends, and much more. What would you like to know?',
       timestamp: new Date()
     }
   ]);
@@ -448,7 +448,7 @@ export default function AdminDashboard() {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 animate-slide-up">
         <Tabs defaultValue="overview" className="w-full" onValueChange={(v) => setActiveTab(v)}>
-          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 md:grid-cols-7 gap-1 mb-8 glass-effect hover-lift">
+          <TabsList className="grid w-full grid-cols-3 sm:grid-cols-5 md:grid-cols-8 gap-1 mb-8 glass-effect hover-lift">
             <TabsTrigger value="overview" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-indigo-50 hover:to-purple-50">
               <TrendingUp className="h-4 w-4" />
               Overview
@@ -460,6 +460,10 @@ export default function AdminDashboard() {
             <TabsTrigger value="projects" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-green-50 hover:to-emerald-50">
               <FolderPlus className="h-4 w-4" />
               Projects
+            </TabsTrigger>
+            <TabsTrigger value="lists" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-teal-50 hover:to-cyan-50">
+              <MessageSquare className="h-4 w-4" />
+              Lists
             </TabsTrigger>
             <TabsTrigger value="categories" className="flex items-center gap-2 transition-all duration-300 hover:bg-gradient-to-r hover:from-yellow-50 hover:to-orange-50">
               <Settings className="h-4 w-4" />
@@ -669,10 +673,12 @@ export default function AdminDashboard() {
                 <div>
                   {reports.map((r) => {
                     const isComment = r.targetType === 'comment';
+                    const isListItem = r.targetType === 'listItem';
                     const comment = r.context?.comment;
-                    const author = comment?.author;
+                    const listItem = r.context?.listItem;
+                    const author = comment?.author || listItem?.createdBy;
                     const projectId = comment?.projectId;
-                    const contentPreview = (comment?.content || r.details || '').trim();
+                    const contentPreview = (comment?.content || listItem?.content || r.details || '').trim();
 
                     return (
                       <div key={r._id} className="grid grid-cols-12 items-center text-sm p-2 border-b min-w-[980px]">
@@ -685,6 +691,11 @@ export default function AdminDashboard() {
                           {isComment && projectId && comment?._id && (
                             <Link href={`/forum/project/${projectId}?commentId=${comment._id}`} className="text-indigo-600 text-xs hover:underline">
                               View in context
+                            </Link>
+                          )}
+                          {isListItem && listItem?.listId && (
+                            <Link href={`/lists/${listItem.listId}`} className="text-indigo-600 text-xs hover:underline">
+                              View containing list
                             </Link>
                           )}
                         </div>
@@ -738,6 +749,33 @@ export default function AdminDashboard() {
                                   }
                                 } catch (e: any) {
                                   toast({ title: 'Delete failed', description: e.message || 'Could not delete comment', variant: 'destructive' });
+                                }
+                              }}
+                            >
+                              Remove
+                            </Button>
+                          )}
+                          {isListItem && listItem?._id && (
+                            <Button
+                              variant="destructive"
+                              size="sm"
+                              onClick={async () => {
+                                try {
+                                  const res = await fetch(`/api/admin/list-items/${listItem._id}`, {
+                                    method: 'DELETE',
+                                    credentials: 'include'
+                                  });
+                                  const result = await res.json();
+
+                                  if (result.success) {
+                                    toast({ title: 'List item removed', description: 'The offending list item was removed.' });
+                                    // Mark context as deleted in UI
+                                    setReports((prev) => prev.map(x => x._id === r._id ? { ...x, context: { ...x.context, listItem: { ...x.context?.listItem, status: 'deleted' } } } : x));
+                                  } else {
+                                    throw new Error(result.error || 'Failed to delete list item');
+                                  }
+                                } catch (e: any) {
+                                  toast({ title: 'Delete failed', description: e.message || 'Could not delete list item', variant: 'destructive' });
                                 }
                               }}
                             >
@@ -1033,6 +1071,68 @@ export default function AdminDashboard() {
                 </CardContent>
               </Card>
             </div>
+          </TabsContent>
+
+          {/* Lists Tab */}
+          <TabsContent value="lists" className="space-y-6">
+            <div className="flex items-center justify-between mb-6">
+              <h2 className="text-2xl font-bold text-gray-900">List Management</h2>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    // Refresh lists
+                    window.location.reload();
+                  }}
+                  className="flex items-center gap-2"
+                >
+                  <RefreshCw className="h-4 w-4" />
+                  Refresh
+                </Button>
+              </div>
+            </div>
+
+            {/* Lists Management */}
+            <Card className="glass-effect border-0 shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-teal-500 to-cyan-500 text-white rounded-t-lg">
+                <CardTitle className="flex items-center gap-2">
+                  <MessageSquare className="h-5 w-5" />
+                  All Lists
+                </CardTitle>
+                <CardDescription className="text-teal-100">
+                  Manage and moderate lists across the platform
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-6">
+                <div className="space-y-4">
+                  <div className="flex items-center gap-2 mb-4">
+                    <Search className="h-4 w-4 text-gray-400" />
+                    <Input
+                      placeholder="Search lists..."
+                      className="flex-1"
+                    />
+                    <Select>
+                      <SelectTrigger className="w-32">
+                        <SelectValue placeholder="Filter" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="all">All Lists</SelectItem>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="deleted">Deleted</SelectItem>
+                        <SelectItem value="featured">Featured</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Lists will be loaded here */}
+                  <div className="space-y-2">
+                    <div className="text-sm text-gray-500 p-4 text-center">
+                      Lists management feature coming soon...
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Categories Tab */}
@@ -1339,7 +1439,7 @@ export default function AdminDashboard() {
                   <div className="p-2 bg-gradient-to-r from-indigo-500 to-purple-600 rounded-lg">
                     <Bot className="h-6 w-6 text-white" />
                   </div>
-                  ShipIts AI Analytics Agent
+                  Osprey @ CMU AI Analytics Agent
                   <Sparkles className="h-5 w-5 text-purple-500" />
                 </CardTitle>
                 <CardDescription>

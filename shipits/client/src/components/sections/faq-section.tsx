@@ -5,8 +5,8 @@ import { ChevronDown } from "lucide-react";
 const faqItems = [
   {
     id: 1,
-    question: "What is Ship Its @ CMU?",
-    answer: "Ship Its @ CMU is a community platform where Carnegie Mellon students can showcase their projects, collaborate on new ideas, and connect with like-minded peers. Whether you're working on a mobile app, hardware project, or research initiative, this is your space to share and get feedback."
+    question: "What is Osprey @ CMU?",
+    answer: "Osprey @ CMU is a community platform where Carnegie Mellon students can showcase their projects, collaborate on new ideas, and connect with like-minded peers. Whether you're working on a mobile app, hardware project, or research initiative, this is your space to share and get feedback."
   },
   {
     id: 2,
@@ -16,7 +16,7 @@ const faqItems = [
   {
     id: 3,
     question: "Can I collaborate with other students?",
-    answer: "Absolutely! Collaboration is at the heart of Ship Its. You can reach out to project creators through our messaging system, join existing projects that are looking for contributors, or post collaboration requests in the forum to find teammates for your ideas."
+    answer: "Absolutely! Collaboration is at the heart of Osprey @ CMU. You can reach out to project creators through our messaging system, join existing projects that are looking for contributors, or post collaboration requests in the forum to find teammates for your ideas."
   },
   {
     id: 4,
@@ -42,7 +42,7 @@ export function FAQSection() {
         <ParallaxSection>
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-4">Frequently Asked Questions</h2>
-            <p className="text-xl text-gray-600">Everything you need to know about Ship Its @ CMU</p>
+            <p className="text-xl text-gray-600">Everything you need to know about Osprey @ CMU</p>
           </div>
 
           <div className="space-y-4">

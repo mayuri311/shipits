@@ -1,6 +1,6 @@
 import mongoose, { Schema, Document, Types } from 'mongoose';
 
-export type ReportTargetType = 'user' | 'project' | 'comment';
+export type ReportTargetType = 'user' | 'project' | 'comment' | 'listItem';
 export type ReportReason = 'spam' | 'abuse' | 'harassment' | 'hate' | 'sexual' | 'self-harm' | 'copyright' | 'other';
 export type ReportStatus = 'pending' | 'reviewed' | 'action_taken' | 'dismissed';
 
@@ -37,7 +37,7 @@ const ReportSchema = new Schema<IReport>({
   },
   targetType: {
     type: String,
-    enum: ['user', 'project', 'comment'],
+    enum: ['user', 'project', 'comment', 'listItem'],
     required: true,
     index: true,
   },

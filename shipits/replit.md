@@ -1,8 +1,8 @@
-# Ship Its @ CMU Platform
+# Osprey @ CMU Platform
 
 ## Overview
 
-Ship Its @ CMU is a community platform for Carnegie Mellon students to showcase projects, connect with peers, and collaborate on innovative ideas. The application features a modern landing page with sections for projects, events, FAQ, contact, and partners, all built with a focus on user engagement and visual appeal.
+Osprey @ CMU is a community platform for Carnegie Mellon students to showcase projects, connect with peers, and collaborate on innovative ideas. The application features a modern landing page with sections for projects, events, FAQ, contact, and partners, all built with a focus on user engagement and visual appeal.
 
 ## User Preferences
 

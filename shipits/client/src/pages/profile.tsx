@@ -335,11 +335,14 @@ export default function Profile() {
               
               {/* Desktop: Show all navigation options */}
               <div className="hidden md:flex items-center gap-2">
+                <Link href="/lists" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
+                  LISTS
+                </Link>
+                <Link href="/dashboard" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
+                  DASHBOARD
+                </Link>
                 <Link href="/#contact" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
                   CONTACT
-                </Link>
-                <Link href="/#partners" className="text-black hover:text-maroon transition-colors duration-300 font-medium tracking-wide">
-                  PARTNERS
                 </Link>
               </div>
 
@@ -360,14 +363,19 @@ export default function Profile() {
           {isMenuOpen && (
             <div className="border-t border-gray-200 mt-2 pt-3 pb-2 md:hidden">
               <div className="grid grid-cols-2 gap-2">
+                <Link href="/lists" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+                    LISTS
+                  </Button>
+                </Link>
+                <Link href="/dashboard" onClick={() => setIsMenuOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
+                    DASHBOARD
+                  </Button>
+                </Link>
                 <Link href="/#contact" onClick={() => setIsMenuOpen(false)}>
                   <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
                     CONTACT
-                  </Button>
-                </Link>
-                <Link href="/#partners" onClick={() => setIsMenuOpen(false)}>
-                  <Button variant="ghost" size="sm" className="w-full justify-start text-xs">
-                    PARTNERS
                   </Button>
                 </Link>
               </div>

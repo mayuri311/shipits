@@ -1,8 +1,8 @@
 #!/usr/bin/env tsx
 
 /**
- * Database Seeding Script for ShipIts Forum
- * 
+ * Database Seeding Script for Osprey @ CMU Forum
+ *
  * This script seeds the MongoDB database with initial data including:
  * - Admin user
  * - Sample projects  

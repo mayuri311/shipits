@@ -51,11 +51,12 @@ import {
   createEventSchema, updateUserSchema, updateProjectSchema, contactSchema,
   createReportSchema, updateReportStatusSchema,
   translateRequestSchema, communityTranslationSchema,
-  type ApiResponse, type PaginatedResponse 
+  createListSchema, createListItemSchema, updateListSchema, updateListItemSchema,
+  type ApiResponse, type PaginatedResponse, type ListFilters, type ListItemFilters
 } from "@shared/schema";
 import { 
   User, Project, Comment, Event, UserActivity, Contact, Notification, Report, getDatabaseStats,
-  Translation
+  Translation, List, ListItem
 } from "./models/index";
 import { nanoid } from 'nanoid';
 import { sendEmailViaSES, buildVerificationEmailHtml, buildCommentNotificationEmailHtml, buildPasswordResetEmailHtml } from './services/sesEmail';
@@ -298,9 +299,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
         await sendEmailViaSES({
           to: email,
-          subject: 'Verify your email for ShipIts',
+          subject: 'Verify your email for Osprey @ CMU',
           html,
-          text: `Welcome to ShipIts. Verify your email: ${verifyUrl}`,
+          text: `Welcome to Osprey@CMU. Verify your email: ${verifyUrl}`,
         });
       } catch (e: any) {
         console.error('Failed to send verification email:', e);
@@ -375,7 +376,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           });
           await sendEmailViaSES({
             to: user.email,
-            subject: 'Verify your email for ShipIts',
+            subject: 'Verify your email for Osprey @ CMU',
             html,
             text: `Verify your email: ${verifyUrl}`,
           });
@@ -485,7 +486,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         email: user.email,
         verifyUrl,
       });
-      await sendEmailViaSES({ to: user.email, subject: 'Verify your email for ShipIts', html, text: `Verify your email: ${verifyUrl}` });
+      await sendEmailViaSES({ to: user.email, subject: 'Verify your email for Osprey@CMU', html, text: `Verify your email: ${verifyUrl}` });
       return res.json({ success: true, message: 'Verification email sent' });
     } catch (e: any) {
       console.error('Resend verify error:', e);
@@ -510,7 +511,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${req.get('host')}`;
       const resetUrl = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}`;
       const html = buildPasswordResetEmailHtml({ fullNameOrUsername: user.fullName || user.username, resetUrl });
-      await sendEmailViaSES({ to: email, subject: 'Reset your ShipIts password', html, text: `Reset your password: ${resetUrl}` });
+      await sendEmailViaSES({ to: email, subject: 'Reset your Osprey @ CMU password', html, text: `Reset your password: ${resetUrl}` });
       return res.json({ success: true, message: 'If the email exists, a reset link has been sent' });
     } catch (e) {
       console.error('Password reset request error:', e);
@@ -723,6 +724,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (targetType === 'comment') exists = !!(await Comment.findById(objId));
       if (targetType === 'project') exists = !!(await Project.findById(objId));
       if (targetType === 'user') exists = !!(await User.findById(objId));
+      if (targetType === 'listItem') exists = !!(await ListItem.findById(objId));
       if (!exists) {
         return res.status(404).json({ success: false, error: 'Target not found' });
       }
@@ -803,6 +805,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
                 ...r,
                 context: {
                   user
+                }
+              };
+            }
+          } else if (r.targetType === 'listItem') {
+            const listItem = await ListItem.findById(r.targetId)
+              .populate('createdBy', 'username fullName profileImage')
+              .select('title content createdBy listId')
+              .lean();
+            if (listItem) {
+              return {
+                ...r,
+                context: {
+                  listItem: {
+                    _id: listItem._id,
+                    title: listItem.title,
+                    content: listItem.content,
+                    createdBy: listItem.createdBy,
+                    listId: listItem.listId,
+                  }
                 }
               };
             }
@@ -1987,6 +2008,44 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Admin - delete list item
+  app.delete('/api/admin/list-items/:id', requireAdmin, async (req, res) => {
+    try {
+      const itemId = req.params.id;
+
+      // Find the list item
+      const listItem = await ListItem.findById(itemId);
+      if (!listItem) {
+        return res.status(404).json({ success: false, error: 'List item not found' });
+      }
+
+      // Check if already deleted
+      if (listItem.status === 'deleted') {
+        return res.status(400).json({ success: false, error: 'List item already deleted' });
+      }
+
+      // Soft delete the item
+      await ListItem.findByIdAndUpdate(itemId, {
+        status: 'deleted',
+        lastEditedBy: req.currentUser._id
+      });
+
+      // Update parent list analytics
+      await List.findByIdAndUpdate(listItem.listId, {
+        $inc: { 'analytics.totalItems': -1 },
+        $set: { 'analytics.lastActivity': new Date() }
+      });
+
+      res.json({
+        success: true,
+        message: 'List item deleted by admin successfully'
+      });
+    } catch (error: any) {
+      console.error('Admin delete list item error:', error);
+      res.status(500).json({ success: false, error: 'Failed to delete list item' });
+    }
+  });
+
   // Event Routes
   app.get('/api/events', async (req, res) => {
     try {
@@ -2021,6 +2080,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Get event error:', error);
       res.status(500).json({ success: false, error: 'Failed to get event' });
+    }
+  });
+
+  // User search (for DM picker and group creation) - authenticated, limited fields, better ranking
+  // This route must come BEFORE all /api/users/:id routes to avoid conflicts
+  app.get('/api/users/search', requireAuth, async (req, res) => {
+    try {
+      const q = (req.query.q as string) || '';
+      const limit = Math.min(parseInt((req.query.limit as string) || '10', 10), 50);
+      const currentUserId = new Types.ObjectId(req.session.userId!);
+
+      // use top-level escapeRegex
+
+      if (!q) {
+        // default: all users (excluding self) for group creation
+        const users = await User.find({ _id: { $ne: currentUserId } })
+          .select('username fullName profileImage')
+          .sort({ lastLoginAt: -1, createdAt: -1 })
+          .limit(limit);
+        return res.json({ success: true, data: { items: users } });
+      }
+
+      const safe = escapeRegex(q);
+      const pipeline = [
+        { $match: { _id: { $ne: currentUserId }, $or: [
+          { username: { $regex: safe, $options: 'i' } },
+          { fullName: { $regex: safe, $options: 'i' } },
+          { email: { $regex: safe, $options: 'i' } },
+        ] } },
+        { $addFields: {
+          usernamePrefix: { $regexMatch: { input: '$username', regex: new RegExp('^' + safe, 'i') } },
+          fullNamePrefix: { $regexMatch: { input: '$fullName', regex: new RegExp('^' + safe, 'i') } },
+        } },
+        { $sort: { usernamePrefix: -1, fullNamePrefix: -1, lastLoginAt: -1, createdAt: -1 } },
+        { $limit: limit },
+        { $project: { username: 1, fullName: 1, profileImage: 1 } },
+      ];
+
+      const users = await User.aggregate(pipeline as any);
+      res.json({ success: true, data: { items: users } });
+    } catch (error: any) {
+      console.error('User search error:', error);
+      res.status(500).json({ success: false, error: 'Failed to search users' });
     }
   });
 
@@ -3541,47 +3643,7 @@ Please provide a helpful, data-driven response based on the available statistics
 
   // Note: File serving moved to main /uploads/:filename route above
 
-  // User search (for DM picker) - authenticated, limited fields, better ranking
-  app.get('/api/users/search', requireAuth, async (req, res) => {
-    try {
-      const q = (req.query.q as string) || '';
-      const limit = Math.min(parseInt((req.query.limit as string) || '10', 10), 50);
-      const currentUserId = new Types.ObjectId(req.session.userId!);
 
-      // use top-level escapeRegex
-
-      if (!q) {
-        // default: most recently active users (excluding self)
-        const users = await User.find({ _id: { $ne: currentUserId } })
-          .select('username fullName profileImage')
-          .sort({ lastLoginAt: -1, createdAt: -1 })
-          .limit(limit);
-        return res.json({ success: true, data: { items: users } });
-      }
-
-      const safe = escapeRegex(q);
-      const pipeline = [
-        { $match: { _id: { $ne: currentUserId }, $or: [
-          { username: { $regex: safe, $options: 'i' } },
-          { fullName: { $regex: safe, $options: 'i' } },
-          { email: { $regex: safe, $options: 'i' } },
-        ] } },
-        { $addFields: {
-          usernamePrefix: { $regexMatch: { input: '$username', regex: new RegExp('^' + safe, 'i') } },
-          fullNamePrefix: { $regexMatch: { input: '$fullName', regex: new RegExp('^' + safe, 'i') } },
-        } },
-        { $sort: { usernamePrefix: -1, fullNamePrefix: -1, lastLoginAt: -1, createdAt: -1 } },
-        { $limit: limit },
-        { $project: { username: 1, fullName: 1, profileImage: 1 } },
-      ];
-
-      const users = await User.aggregate(pipeline as any);
-      res.json({ success: true, data: { items: users } });
-    } catch (error: any) {
-      console.error('User search error:', error);
-      res.status(500).json({ success: false, error: 'Failed to search users' });
-    }
-  });
 
   // List users (for DM dropdown) - authenticated, paginated, minimal fields
   app.get('/api/users', requireAuth, async (req, res) => {
@@ -3950,6 +4012,249 @@ Please provide a helpful, data-driven response based on the available statistics
     }
   });
 
+  // Update conversation info (name, description)
+  app.put('/api/conversations/:id', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const conversationId = new Types.ObjectId(req.params.id);
+      const { name, description } = req.body || {};
+
+      // Find conversation and verify user is participant
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      // Only allow updating group chats
+      if (conversation.type !== 'group') {
+        return res.status(400).json({ success: false, error: 'Only group conversations can be updated' });
+      }
+
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name?.trim() || undefined;
+      if (description !== undefined) updateData.description = description?.trim() || undefined;
+
+      const updatedConversation = await Conversation.findByIdAndUpdate(
+        conversationId,
+        updateData,
+        { new: true }
+      ).populate('participants', 'username fullName profileImage');
+
+      // Notify SSE subscribers
+      broadcastToConversation(conversationId.toString(), {
+        type: 'group_updated',
+        data: { conversation: updatedConversation },
+      });
+
+      res.json({ success: true, data: { conversation: updatedConversation } });
+    } catch (error: any) {
+      console.error('Update conversation error:', error);
+      res.status(500).json({ success: false, error: 'Failed to update conversation' });
+    }
+  });
+
+  // Add participant to conversation
+  app.post('/api/conversations/:id/participants', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const conversationId = new Types.ObjectId(req.params.id);
+      const { userId: newParticipantId } = req.body || {};
+
+      if (!newParticipantId) {
+        return res.status(400).json({ success: false, error: 'userId is required' });
+      }
+
+      const participantToAdd = new Types.ObjectId(newParticipantId);
+
+      // Find conversation and verify current user is participant
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      // Only allow adding to group chats
+      if (conversation.type !== 'group') {
+        return res.status(400).json({ success: false, error: 'Only group conversations can have participants added' });
+      }
+
+      // Check if user is already a participant
+      if (conversation.participants.some(p => p.equals(participantToAdd))) {
+        return res.status(400).json({ success: false, error: 'User is already a participant' });
+      }
+
+      // Add participant
+      const updatedConversation = await Conversation.findByIdAndUpdate(
+        conversationId,
+        { $push: { participants: participantToAdd } },
+        { new: true }
+      ).populate('participants', 'username fullName profileImage');
+
+      // Get the added user info for SSE notification
+      const addedUser = await User.findById(participantToAdd).select('username fullName profileImage');
+
+      // Notify SSE subscribers
+      broadcastToConversation(conversationId.toString(), {
+        type: 'member_joined',
+        data: { user: addedUser, conversationId: conversationId.toString() },
+      });
+
+      res.json({ success: true, data: { conversation: updatedConversation } });
+    } catch (error: any) {
+      console.error('Add participant error:', error);
+      res.status(500).json({ success: false, error: 'Failed to add participant' });
+    }
+  });
+
+  // Remove participant from conversation
+  app.delete('/api/conversations/:id/participants/:userId', requireAuth, async (req, res) => {
+    try {
+      const currentUserId = new Types.ObjectId(req.session.userId!);
+      const conversationId = new Types.ObjectId(req.params.id);
+      const participantToRemove = new Types.ObjectId(req.params.userId);
+
+      // Find conversation and verify current user is participant
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.equals(currentUserId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      // Only allow removing from group chats
+      if (conversation.type !== 'group') {
+        return res.status(400).json({ success: false, error: 'Only group conversations can have participants removed' });
+      }
+
+      // Check if user is actually a participant
+      if (!conversation.participants.some(p => p.equals(participantToRemove))) {
+        return res.status(400).json({ success: false, error: 'User is not a participant' });
+      }
+
+      // Can't remove yourself via this endpoint (use leave group instead)
+      if (participantToRemove.equals(currentUserId)) {
+        return res.status(400).json({ success: false, error: 'Use leave group to remove yourself' });
+      }
+
+      // Remove participant
+      const updatedConversation = await Conversation.findByIdAndUpdate(
+        conversationId,
+        { $pull: { participants: participantToRemove } },
+        { new: true }
+      ).populate('participants', 'username fullName profileImage');
+
+      // Get the removed user info for SSE notification
+      const removedUser = await User.findById(participantToRemove).select('username fullName profileImage');
+
+      // Notify SSE subscribers
+      broadcastToConversation(conversationId.toString(), {
+        type: 'member_left',
+        data: { userId: participantToRemove.toString(), conversationId: conversationId.toString() },
+      });
+
+      res.json({ success: true, data: { conversation: updatedConversation } });
+    } catch (error: any) {
+      console.error('Remove participant error:', error);
+      res.status(500).json({ success: false, error: 'Failed to remove participant' });
+    }
+  });
+
+  // Leave group conversation
+  app.delete('/api/conversations/:id/leave', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const conversationId = new Types.ObjectId(req.params.id);
+
+      // Find conversation and verify user is participant
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      // Only allow leaving group chats
+      if (conversation.type !== 'group') {
+        return res.status(400).json({ success: false, error: 'Only group conversations can be left' });
+      }
+
+      // Remove participant
+      const updatedConversation = await Conversation.findByIdAndUpdate(
+        conversationId,
+        { $pull: { participants: userId } },
+        { new: true }
+      ).populate('participants', 'username fullName profileImage');
+
+      // Get the user info for SSE notification
+      const leftUser = await User.findById(userId).select('username fullName profileImage');
+
+      // Notify SSE subscribers
+      broadcastToConversation(conversationId.toString(), {
+        type: 'member_left',
+        data: { userId: userId.toString(), conversationId: conversationId.toString() },
+      });
+
+      res.json({ success: true, data: { conversation: updatedConversation } });
+    } catch (error: any) {
+      console.error('Leave group error:', error);
+      res.status(500).json({ success: false, error: 'Failed to leave group' });
+    }
+  });
+
+  // Typing indicator endpoints
+  app.post('/api/conversations/:id/typing', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const conversationId = new Types.ObjectId(req.params.id);
+
+      // Find conversation and verify user is participant
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      // Get user info for typing notification
+      const typingUser = await User.findById(userId).select('username fullName');
+
+      // Notify SSE subscribers
+      broadcastToConversation(conversationId.toString(), {
+        type: 'typing_started',
+        data: {
+          userId: userId.toString(),
+          conversationId: conversationId.toString(),
+          user: typingUser
+        },
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Start typing error:', error);
+      res.status(500).json({ success: false, error: 'Failed to send typing indicator' });
+    }
+  });
+
+  app.delete('/api/conversations/:id/typing', requireAuth, async (req, res) => {
+    try {
+      const userId = new Types.ObjectId(req.session.userId!);
+      const conversationId = new Types.ObjectId(req.params.id);
+
+      // Find conversation and verify user is participant
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.equals(userId))) {
+        return res.status(403).json({ success: false, error: 'Forbidden' });
+      }
+
+      // Notify SSE subscribers
+      broadcastToConversation(conversationId.toString(), {
+        type: 'typing_stopped',
+        data: {
+          userId: userId.toString(),
+          conversationId: conversationId.toString()
+        },
+      });
+
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Stop typing error:', error);
+      res.status(500).json({ success: false, error: 'Failed to stop typing indicator' });
+    }
+  });
+
   // Translation Routes
   app.post('/api/translate', async (req, res) => {
     try {
@@ -4114,8 +4419,8 @@ Please provide a helpful, data-driven response based on the available statistics
     }
   });
 
-  // User search for collaborators
-  app.get('/api/users/search', requireAuth, async (req, res) => {
+  // User search for collaborators (use query parameter)
+  app.get('/api/users/collaborator-search', requireAuth, async (req, res) => {
     try {
       const { query } = req.query;
       if (!query || typeof query !== 'string') {
@@ -4366,6 +4671,891 @@ Please provide a helpful, data-driven response based on the available statistics
     } catch (error: any) {
       console.error('Get user collaborations error:', error);
       res.status(500).json({ success: false, error: 'Failed to get user collaborations' });
+    }
+  });
+
+  // ========================================
+  // LISTS API ROUTES
+  // ========================================
+
+  // Get all lists with filtering and pagination
+  app.get('/api/lists', async (req, res) => {
+    try {
+      const page = parseInt(req.query.page as string) || 1;
+      const limit = Math.min(parseInt(req.query.limit as string) || 12, 50);
+      const skip = (page - 1) * limit;
+      
+      const filters: any = { status: 'active' };
+      
+      // Apply filters
+      if (req.query.category) filters.category = req.query.category;
+      if (req.query.featured === 'true') filters.featured = true;
+      if (req.query.isPublic === 'false') filters.isPublic = false;
+      if (req.query.createdBy) filters.createdBy = new Types.ObjectId(req.query.createdBy as string);
+      if (req.query.tags) {
+        const tags = Array.isArray(req.query.tags) ? req.query.tags : [req.query.tags];
+        filters.tags = { $in: tags };
+      }
+      
+      // Search functionality
+      if (req.query.search) {
+        const searchRegex = new RegExp(escapeRegex(req.query.search as string), 'i');
+        filters.$or = [
+          { title: searchRegex },
+          { description: searchRegex },
+          { tags: searchRegex }
+        ];
+      }
+      
+      // Sort options
+      let sort: any = { featured: -1, 'analytics.lastActivity': -1 };
+      if (req.query.sortBy === 'newest') sort = { createdAt: -1 };
+      if (req.query.sortBy === 'popular') sort = { 'analytics.views': -1 };
+      if (req.query.sortBy === 'items') sort = { 'analytics.totalItems': -1 };
+      
+      const [lists, total] = await Promise.all([
+        List.find(filters)
+          .populate('createdBy', 'username fullName profileImage')
+          .sort(sort)
+          .skip(skip)
+          .limit(limit)
+          .lean(),
+        List.countDocuments(filters)
+      ]);
+      
+      res.json({
+        success: true,
+        data: {
+          lists,
+          pagination: {
+            page,
+            limit,
+            total,
+            totalPages: Math.ceil(total / limit)
+          }
+        }
+      });
+    } catch (error: any) {
+      console.error('Get lists error:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch lists' });
+    }
+  });
+
+  // Get featured lists
+  app.get('/api/lists/featured', async (req, res) => {
+    try {
+      const lists = await List.find({ 
+        featured: true, 
+        status: 'active',
+        isPublic: true 
+      })
+      .populate('createdBy', 'username fullName profileImage')
+      .sort({ 'analytics.lastActivity': -1 })
+      .limit(8)
+      .lean();
+      
+      res.json({ success: true, data: { lists } });
+    } catch (error: any) {
+      console.error('Get featured lists error:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch featured lists' });
+    }
+  });
+
+  // Get list categories with counts
+  app.get('/api/lists/categories', async (req, res) => {
+    try {
+      const categories = await List.aggregate([
+        { $match: { status: 'active', isPublic: true } },
+        { $group: { _id: '$category', count: { $sum: 1 } } },
+        { $sort: { count: -1 } }
+      ]);
+      
+      res.json({ success: true, data: { categories } });
+    } catch (error: any) {
+      console.error('Get list categories error:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch categories' });
+    }
+  });
+
+  // Get single list with items
+  app.get('/api/lists/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid list ID' });
+      }
+      
+      const list = await List.findById(id)
+        .populate('createdBy', 'username fullName profileImage college graduationYear')
+        .populate('collaborators.userId', 'username fullName profileImage')
+        .lean();
+      
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+      
+      // Check if user can view this list
+      if (!list.isPublic && req.session.userId) {
+        const userId = req.session.userId;
+        const canView = list.createdBy._id.toString() === userId ||
+                       list.collaborators?.some(c => c.userId._id.toString() === userId);
+        
+        if (!canView) {
+          return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+      }
+      
+      // Get list items
+      const items = await ListItem.find({ 
+        listId: new Types.ObjectId(id), 
+        status: 'active' 
+      })
+      .populate('createdBy', 'username fullName profileImage')
+      .populate('lastEditedBy', 'username fullName profileImage')
+      .sort({ order: 1, createdAt: 1 })
+      .lean();
+      
+      // Synchronize item analytics with reaction counts
+      const synchronizedItems = items.map(item => {
+        const likeCount = item.reactions?.filter(r => r.type === 'like').length || 0;
+        const helpfulCount = item.reactions?.filter(r => r.type === 'helpful').length || 0;
+
+        // Update analytics if they're out of sync
+        if (item.analytics.likes !== likeCount || item.analytics.helpful !== helpfulCount) {
+          // Update in database (fire and forget)
+          ListItem.findByIdAndUpdate(item._id, {
+            'analytics.likes': likeCount,
+            'analytics.helpful': helpfulCount
+          }).catch(err => console.error('Failed to sync analytics:', err));
+        }
+
+        return {
+          ...item,
+          analytics: {
+            ...item.analytics,
+            likes: likeCount,
+            helpful: helpfulCount
+          }
+        };
+      });
+
+      // Update view count if user is logged in
+      if (req.session.userId) {
+        const userId = new Types.ObjectId(req.session.userId);
+        if (!list.analytics.uniqueViewers.some(v => v.toString() === userId.toString())) {
+          await List.findByIdAndUpdate(id, {
+            $inc: { 'analytics.views': 1 },
+            $addToSet: { 'analytics.uniqueViewers': userId }
+          });
+        }
+      }
+
+      res.json({
+        success: true,
+        data: {
+          list: {
+            ...list,
+            analytics: {
+              ...list.analytics,
+              views: list.analytics.views + (req.session.userId ? 1 : 0)
+            }
+          },
+          items: synchronizedItems
+        }
+      });
+    } catch (error: any) {
+      console.error('Get list error:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch list' });
+    }
+  });
+
+  // Create new list
+  app.post('/api/lists', requireAuth, validateBody(createListSchema), async (req, res) => {
+    try {
+      const listData = {
+        ...req.body,
+        createdBy: new Types.ObjectId(req.session.userId!),
+        analytics: {
+          views: 0,
+          uniqueViewers: [],
+          totalItems: 0,
+          totalContributors: [new Types.ObjectId(req.session.userId!)],
+          lastActivity: new Date()
+        }
+      };
+      
+      const list = new List(listData);
+      await list.save();
+      
+      const populatedList = await List.findById(list._id)
+        .populate('createdBy', 'username fullName profileImage')
+        .lean();
+      
+      res.status(201).json({ 
+        success: true, 
+        data: { list: populatedList },
+        message: 'List created successfully'
+      });
+    } catch (error: any) {
+      console.error('Create list error:', error);
+      res.status(500).json({ success: false, error: 'Failed to create list' });
+    }
+  });
+
+  // Update list
+  app.put('/api/lists/:id', requireAuth, validateBody(updateListSchema), async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid list ID' });
+      }
+      
+      const list = await List.findById(id);
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+      
+      // Check permissions
+      const userId = req.session.userId!;
+      const canEdit = list.createdBy.toString() === userId ||
+                     list.collaborators?.some(c => 
+                       c.userId.toString() === userId && 
+                       ['owner', 'editor'].includes(c.role)
+                     );
+      
+      if (!canEdit) {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+      
+      const updatedList = await List.findByIdAndUpdate(
+        id,
+        { ...req.body, 'analytics.lastActivity': new Date() },
+        { new: true, runValidators: true }
+      ).populate('createdBy', 'username fullName profileImage');
+      
+      res.json({ 
+        success: true, 
+        data: { list: updatedList },
+        message: 'List updated successfully'
+      });
+    } catch (error: any) {
+      console.error('Update list error:', error);
+      res.status(500).json({ success: false, error: 'Failed to update list' });
+    }
+  });
+
+  // Delete list
+  app.delete('/api/lists/:id', requireAuth, async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid list ID' });
+      }
+      
+      const list = await List.findById(id);
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+      
+      // Check if user is owner or admin
+      const currentUser = await User.findById(req.session.userId!);
+      const isOwner = list.createdBy.toString() === req.session.userId!;
+      const isAdmin = currentUser?.role === 'admin';
+
+      if (!isOwner && !isAdmin) {
+        return res.status(403).json({ success: false, error: 'Only the list owner or admin can delete this list' });
+      }
+      
+      // Soft delete
+      await List.findByIdAndUpdate(id, { 
+        status: 'deleted',
+        'analytics.lastActivity': new Date()
+      });
+      
+      // Also delete all list items
+      await ListItem.updateMany(
+        { listId: new Types.ObjectId(id) },
+        { status: 'deleted' }
+      );
+      
+      res.json({
+        success: true,
+        message: 'List deleted successfully'
+      });
+    } catch (error: any) {
+      console.error('Delete list error:', error);
+      res.status(500).json({ success: false, error: 'Failed to delete list' });
+    }
+  });
+
+  // Admin - delete list
+  app.delete('/api/admin/lists/:id', requireAdmin, async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      if (!Types.ObjectId.isValid(id)) {
+        return res.status(400).json({ success: false, error: 'Invalid list ID' });
+      }
+
+      const list = await List.findById(id);
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+
+      // Check if already deleted
+      if (list.status === 'deleted') {
+        return res.status(400).json({ success: false, error: 'List already deleted' });
+      }
+
+      // Soft delete the list
+      await List.findByIdAndUpdate(id, {
+        status: 'deleted',
+        'analytics.lastActivity': new Date()
+      });
+
+      // Also soft delete all list items
+      await ListItem.updateMany(
+        { listId: new Types.ObjectId(id) },
+        { status: 'deleted' }
+      );
+
+      res.json({
+        success: true,
+        message: 'List deleted by admin successfully'
+      });
+    } catch (error: any) {
+      console.error('Admin delete list error:', error);
+      res.status(500).json({ success: false, error: 'Failed to delete list' });
+    }
+  });
+
+  // ========================================
+  // LIST ITEMS API ROUTES
+  // ========================================
+
+  // Get list items with filtering
+  app.get('/api/lists/:listId/items', async (req, res) => {
+    try {
+      const { listId } = req.params;
+      
+      if (!Types.ObjectId.isValid(listId)) {
+        return res.status(400).json({ success: false, error: 'Invalid list ID' });
+      }
+      
+      // Check if list exists and user can view it
+      const list = await List.findById(listId);
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+      
+      if (!list.isPublic && req.session.userId) {
+        const userId = req.session.userId;
+        const canView = list.createdBy.toString() === userId ||
+                       list.collaborators?.some(c => c.userId.toString() === userId);
+        
+        if (!canView) {
+          return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+      }
+      
+      const filters: any = { listId: new Types.ObjectId(listId), status: 'active' };
+      
+      // Apply filters
+      if (req.query.type) filters['metadata.type'] = req.query.type;
+      if (req.query.featured === 'true') filters.featured = true;
+      
+      const items = await ListItem.find(filters)
+        .populate('createdBy', 'username fullName profileImage')
+        .populate('lastEditedBy', 'username fullName profileImage')
+        .sort({ 'analytics.upvotes': -1, order: 1, createdAt: 1 })
+        .lean();
+      
+      res.json({ success: true, data: { items } });
+    } catch (error: any) {
+      console.error('Get list items error:', error);
+      res.status(500).json({ success: false, error: 'Failed to fetch list items' });
+    }
+  });
+
+  // Create new list item
+  app.post('/api/lists/:listId/items', requireAuth, validateBody(createListItemSchema), async (req, res) => {
+    try {
+      const { listId } = req.params;
+      
+      if (!Types.ObjectId.isValid(listId)) {
+        return res.status(400).json({ success: false, error: 'Invalid list ID' });
+      }
+      
+      const list = await List.findById(listId);
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+      
+      // Check permissions
+      const userId = req.session.userId!;
+      const canContribute = list.isPublic && list.settings.allowAnonymousContributions ||
+                           list.createdBy.toString() === userId ||
+                           list.collaborators?.some(c => c.userId.toString() === userId);
+      
+      if (!canContribute) {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+      
+      // Check item limit per user if set
+      if (list.settings.maxItemsPerUser) {
+        const userItemCount = await ListItem.countDocuments({
+          listId: new Types.ObjectId(listId),
+          createdBy: new Types.ObjectId(userId),
+          status: 'active'
+        });
+        
+        if (userItemCount >= list.settings.maxItemsPerUser) {
+          return res.status(400).json({ 
+            success: false, 
+            error: `Maximum ${list.settings.maxItemsPerUser} items per user allowed` 
+          });
+        }
+      }
+      
+      // Get next order number
+      const lastItem = await ListItem.findOne({ listId: new Types.ObjectId(listId) })
+        .sort({ order: -1 })
+        .lean();
+      
+      const itemData = {
+        ...req.body,
+        listId: new Types.ObjectId(listId),
+        createdBy: new Types.ObjectId(userId),
+        order: req.body.order ?? (lastItem ? lastItem.order + 1 : 0),
+        status: list.settings.requireApprovalForNewItems ? 'pending' : 'active'
+      };
+      
+      const item = new ListItem(itemData);
+      await item.save();
+      
+      // Update list analytics
+      await List.findByIdAndUpdate(listId, {
+        $inc: { 'analytics.totalItems': 1 },
+        $set: { 'analytics.lastActivity': new Date() },
+        $addToSet: { 'analytics.totalContributors': new Types.ObjectId(userId) }
+      });
+      
+      const populatedItem = await ListItem.findById(item._id)
+        .populate('createdBy', 'username fullName profileImage')
+        .lean();
+      
+      // Broadcast real-time update to connected clients
+      broadcastToList(listId, {
+        type: 'item_added',
+        data: { 
+          item: populatedItem,
+          approved: !list.settings.requireApprovalForNewItems
+        }
+      });
+      
+      res.status(201).json({ 
+        success: true, 
+        data: { item: populatedItem },
+        message: list.settings.requireApprovalForNewItems ? 
+          'Item submitted for approval' : 'Item added successfully'
+      });
+    } catch (error: any) {
+      console.error('Create list item error:', error);
+      res.status(500).json({ success: false, error: 'Failed to create list item' });
+    }
+  });
+
+  // Update list item
+  app.put('/api/lists/:listId/items/:itemId', requireAuth, validateBody(updateListItemSchema), async (req, res) => {
+    try {
+      const { listId, itemId } = req.params;
+      
+      if (!Types.ObjectId.isValid(listId) || !Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({ success: false, error: 'Invalid ID format' });
+      }
+      
+      const [list, item] = await Promise.all([
+        List.findById(listId),
+        ListItem.findById(itemId)
+      ]);
+      
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+      
+      if (!item) {
+        return res.status(404).json({ success: false, error: 'List item not found' });
+      }
+      
+      // Check permissions
+      const userId = req.session.userId!;
+      const canEdit = list.settings.allowItemEditing && (
+        item.createdBy.toString() === userId ||
+        list.createdBy.toString() === userId ||
+        list.collaborators?.some(c => 
+          c.userId.toString() === userId && 
+          ['owner', 'editor'].includes(c.role)
+        )
+      );
+      
+      if (!canEdit) {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+      
+      // Track edit history
+      const changes = [];
+      for (const [field, newValue] of Object.entries(req.body)) {
+        const oldValue = (item as any)[field];
+        if (oldValue !== newValue) {
+          changes.push({
+            field,
+            oldValue: typeof oldValue === 'object' ? JSON.stringify(oldValue) : String(oldValue),
+            newValue: typeof newValue === 'object' ? JSON.stringify(newValue) : String(newValue)
+          });
+        }
+      }
+      
+      const updateData = {
+        ...req.body,
+        lastEditedBy: new Types.ObjectId(userId),
+        $push: changes.length > 0 ? {
+          editHistory: {
+            editedBy: new Types.ObjectId(userId),
+            editedAt: new Date(),
+            changes,
+            reason: req.body.editReason
+          }
+        } : undefined
+      };
+      
+      delete updateData.editReason;
+      
+      const updatedItem = await ListItem.findByIdAndUpdate(
+        itemId,
+        updateData,
+        { new: true, runValidators: true }
+      ).populate('createdBy', 'username fullName profileImage')
+       .populate('lastEditedBy', 'username fullName profileImage');
+      
+      // Update list activity
+      await List.findByIdAndUpdate(listId, {
+        'analytics.lastActivity': new Date()
+      });
+      
+      // Broadcast real-time update to connected clients
+      broadcastToList(listId, {
+        type: 'item_updated',
+        data: { 
+          item: updatedItem,
+          editedBy: {
+            _id: userId,
+            fullName: (updatedItem?.lastEditedBy as any)?.fullName,
+            username: (updatedItem?.lastEditedBy as any)?.username
+          }
+        }
+      });
+      
+      res.json({ 
+        success: true, 
+        data: { item: updatedItem },
+        message: 'Item updated successfully'
+      });
+    } catch (error: any) {
+      console.error('Update list item error:', error);
+      res.status(500).json({ success: false, error: 'Failed to update list item' });
+    }
+  });
+
+  // Delete list item
+  app.delete('/api/lists/:listId/items/:itemId', requireAuth, async (req, res) => {
+    try {
+      const { listId, itemId } = req.params;
+      
+      if (!Types.ObjectId.isValid(listId) || !Types.ObjectId.isValid(itemId)) {
+        return res.status(400).json({ success: false, error: 'Invalid ID format' });
+      }
+      
+      const [list, item] = await Promise.all([
+        List.findById(listId),
+        ListItem.findById(itemId)
+      ]);
+      
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+      
+      if (!item) {
+        return res.status(404).json({ success: false, error: 'List item not found' });
+      }
+      
+      // Check permissions
+      const userId = req.session.userId!;
+      const user = await User.findById(userId);
+      
+      // Admin users can delete any item
+      const isAdmin = user?.role === 'admin';
+      
+      const canDelete = isAdmin || (list.settings.allowItemDeletion && (
+        item.createdBy.toString() === userId ||
+        list.createdBy.toString() === userId ||
+        list.collaborators?.some(c => 
+          c.userId.toString() === userId && 
+          ['owner', 'editor'].includes(c.role)
+        )
+      ));
+      
+      if (!canDelete) {
+        return res.status(403).json({ success: false, error: 'Permission denied' });
+      }
+      
+      // Soft delete
+      await ListItem.findByIdAndUpdate(itemId, { status: 'deleted' });
+      
+      // Update list analytics
+      await List.findByIdAndUpdate(listId, {
+        $inc: { 'analytics.totalItems': -1 },
+        $set: { 'analytics.lastActivity': new Date() }
+      });
+      
+      // Get user info for broadcast
+      const deletingUser = await User.findById(userId).select('username fullName');
+      
+      // Broadcast real-time update to connected clients
+      broadcastToList(listId, {
+        type: 'item_deleted',
+        data: { 
+          itemId: itemId,
+          deletedBy: {
+            _id: userId,
+            fullName: deletingUser?.fullName,
+            username: deletingUser?.username
+          }
+        }
+      });
+      
+      res.json({ 
+        success: true,
+        message: 'Item deleted successfully'
+      });
+    } catch (error: any) {
+      console.error('Delete list item error:', error);
+      res.status(500).json({ success: false, error: 'Failed to delete list item' });
+    }
+  });
+
+  // React to list item
+  app.post('/api/lists/:listId/items/:itemId/react', requireAuth, async (req, res) => {
+    try {
+      const { listId, itemId } = req.params;
+      const { type } = req.body; // 'like', 'helpful', 'outdated', 'spam', 'upvote'
+      
+      if (!['like', 'helpful', 'outdated', 'spam', 'upvote'].includes(type)) {
+        return res.status(400).json({ success: false, error: 'Invalid reaction type' });
+      }
+      
+      const item = await ListItem.findById(itemId);
+      if (!item) {
+        return res.status(404).json({ success: false, error: 'List item not found' });
+      }
+      
+      const userId = new Types.ObjectId(req.session.userId!);
+      const existingReaction = item.reactions?.find(r => 
+        r.userId.toString() === userId.toString() && r.type === type
+      );
+      
+      if (existingReaction) {
+        // Remove reaction
+        await ListItem.findByIdAndUpdate(itemId, {
+          $pull: { reactions: { userId, type } },
+          $inc: {
+            [`analytics.${type === 'like' ? 'likes' : type === 'helpful' ? 'helpful' : 'upvotes'}`]: -1
+          }
+        });
+
+        // Broadcast reaction update
+        broadcastToList(listId, {
+          type: 'item_reaction_updated',
+          data: {
+            itemId,
+            reactionType: type,
+            action: 'removed',
+            userId: userId.toString()
+          }
+        });
+
+        res.json({ success: true, message: 'Reaction removed' });
+      } else {
+        // Check if user has other reactions and update analytics accordingly
+        const userReactions = item.reactions?.filter(r => r.userId.toString() === userId.toString()) || [];
+        const existingLike = userReactions.find(r => r.type === 'like');
+        const existingHelpful = userReactions.find(r => r.type === 'helpful');
+        const existingUpvote = userReactions.find(r => r.type === 'upvote');
+
+        // Calculate analytics changes
+        const analyticsInc: any = {};
+
+        if (type === 'like' && !existingLike) {
+          analyticsInc['analytics.likes'] = 1;
+        }
+        if (type === 'helpful' && !existingHelpful) {
+          analyticsInc['analytics.helpful'] = 1;
+        }
+        if (type === 'upvote' && !existingUpvote) {
+          analyticsInc['analytics.upvotes'] = 1;
+        }
+        if (existingLike && type !== 'like') {
+          analyticsInc['analytics.likes'] = -1;
+        }
+        if (existingHelpful && type !== 'helpful') {
+          analyticsInc['analytics.helpful'] = -1;
+        }
+        if (existingUpvote && type !== 'upvote') {
+          analyticsInc['analytics.upvotes'] = -1;
+        }
+
+        // Add reaction (remove any existing reaction by this user first)
+        await ListItem.findByIdAndUpdate(itemId, {
+          $pull: { reactions: { userId } },
+          ...analyticsInc
+        });
+
+        await ListItem.findByIdAndUpdate(itemId, {
+          $push: { reactions: { userId, type, timestamp: new Date() } }
+        });
+
+        // Broadcast reaction update
+        broadcastToList(listId, {
+          type: 'item_reaction_updated',
+          data: {
+            itemId,
+            reactionType: type,
+            action: 'added',
+            userId: userId.toString()
+          }
+        });
+
+        res.json({ success: true, message: 'Reaction added' });
+      }
+    } catch (error: any) {
+      console.error('React to item error:', error);
+      res.status(500).json({ success: false, error: 'Failed to react to item' });
+    }
+  });
+
+  // Track item click/view
+  app.post('/api/lists/:listId/items/:itemId/track', async (req, res) => {
+    try {
+      const { listId, itemId } = req.params;
+      const { action } = req.body; // 'view', 'click', 'copy'
+      
+      if (!['view', 'click', 'copy'].includes(action)) {
+        return res.status(400).json({ success: false, error: 'Invalid action type' });
+      }
+      
+      const updateField = action === 'view' ? 'analytics.views' : 
+                         action === 'click' ? 'analytics.clicks' : 'analytics.copies';
+      
+      await ListItem.findByIdAndUpdate(itemId, {
+        $inc: { [updateField]: 1 }
+      });
+      
+      res.json({ success: true });
+    } catch (error: any) {
+      console.error('Track item action error:', error);
+      res.status(500).json({ success: false, error: 'Failed to track action' });
+    }
+  });
+
+  // ========================================
+  // LISTS REAL-TIME UPDATES (SSE)
+  // ========================================
+
+  // SSE: Lists live updates
+  type ListSseClient = { id: string; res: any; listId: string; userId: string };
+  const listSseClients = new Map<string, ListSseClient>();
+  
+  function broadcastToList(listId: string, payload: any) {
+    const data = `data: ${JSON.stringify(payload)}\n\n`;
+    listSseClients.forEach((client) => {
+      if (client.listId === listId) {
+        try { 
+          client.res.write(data); 
+        } catch (error) {
+          console.error('Error broadcasting to list client:', error);
+          listSseClients.delete(client.id);
+        }
+      }
+    });
+  }
+
+  app.get('/api/lists/:id/stream', async (req, res) => {
+    try {
+      const { id: listId } = req.params;
+      
+      if (!Types.ObjectId.isValid(listId)) {
+        return res.status(400).json({ success: false, error: 'Invalid list ID' });
+      }
+
+      // Check if list exists and user can view it
+      const list = await List.findById(listId);
+      if (!list) {
+        return res.status(404).json({ success: false, error: 'List not found' });
+      }
+
+      // Check permissions (public lists or list members)
+      const userId = req.session.userId;
+      if (!list.isPublic && userId) {
+        const canView = list.createdBy.toString() === userId ||
+                       list.collaborators?.some(c => c.userId.toString() === userId);
+        
+        if (!canView) {
+          return res.status(403).json({ success: false, error: 'Access denied' });
+        }
+      }
+
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.setHeader('Access-Control-Allow-Origin', '*');
+      res.setHeader('Access-Control-Allow-Headers', 'Cache-Control');
+      res.flushHeaders?.();
+
+      const clientId = `${userId || 'anonymous'}:${Date.now()}:${Math.random()}`;
+      const client: ListSseClient = { 
+        id: clientId, 
+        res, 
+        listId: listId.toString(), 
+        userId: userId || 'anonymous' 
+      };
+      listSseClients.set(clientId, client);
+
+      res.write(`data: ${JSON.stringify({ type: 'connected', data: { clientId } })}\n\n`);
+
+      // Send current viewer count
+      const viewerCount = Array.from(listSseClients.values())
+        .filter(c => c.listId === listId).length;
+      broadcastToList(listId, { 
+        type: 'viewer_count', 
+        data: { count: viewerCount } 
+      });
+
+      req.on('close', () => {
+        listSseClients.delete(clientId);
+        
+        // Update viewer count after disconnect
+        const newViewerCount = Array.from(listSseClients.values())
+          .filter(c => c.listId === listId).length;
+        broadcastToList(listId, { 
+          type: 'viewer_count', 
+          data: { count: newViewerCount } 
+        });
+      });
+    } catch (error: any) {
+      console.error('List SSE subscribe error:', error);
+      res.status(500).end();
     }
   });
 

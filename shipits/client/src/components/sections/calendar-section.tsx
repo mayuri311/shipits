@@ -42,7 +42,7 @@ export function CalendarSection() {
         <ParallaxSection>
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold mb-4">Upcoming Events</h2>
-            <p className="text-xl text-gray-600">Stay connected with the Ship Its community</p>
+            <p className="text-xl text-gray-600">Stay connected with the Osprey @ CMU community</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">

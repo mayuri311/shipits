@@ -1,6 +1,6 @@
-# 🚀 ShipIts Forum - AWS EC2 Deployment
+# 🚀 Osprey @ CMU Forum - AWS EC2 Deployment
 
-A complete production deployment guide for the ShipIts Forum application on AWS EC2.
+A complete production deployment guide for the Osprey @ CMU Forum application on AWS EC2.
 
 ## 📋 Quick Start
 
