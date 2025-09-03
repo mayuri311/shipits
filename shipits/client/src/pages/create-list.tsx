@@ -112,25 +112,71 @@ export default function CreateList() {
 
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
-    
+
     if (!formData.title.trim()) {
       newErrors.title = 'Title is required';
     } else if (formData.title.length > 200) {
       newErrors.title = 'Title must be less than 200 characters';
     }
-    
+
     if (!formData.description.trim()) {
       newErrors.description = 'Description is required';
     } else if (formData.description.length > 1000) {
       newErrors.description = 'Description must be less than 1000 characters';
     }
-    
+
     if (!formData.category) {
       newErrors.category = 'Category is required';
     }
-    
+
+    if (formData.tags.length === 0) {
+      newErrors.tags = 'At least one tag is required';
+    }
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+
+  // Real-time validation functions
+  const validateField = (field: string, value: any) => {
+    const newErrors = { ...errors };
+
+    switch (field) {
+      case 'title':
+        if (!value.trim()) {
+          newErrors.title = 'Title is required';
+        } else if (value.length > 200) {
+          newErrors.title = 'Title must be less than 200 characters';
+        } else {
+          delete newErrors.title;
+        }
+        break;
+      case 'description':
+        if (!value.trim()) {
+          newErrors.description = 'Description is required';
+        } else if (value.length > 1000) {
+          newErrors.description = 'Description must be less than 1000 characters';
+        } else {
+          delete newErrors.description;
+        }
+        break;
+      case 'category':
+        if (!value) {
+          newErrors.category = 'Category is required';
+        } else {
+          delete newErrors.category;
+        }
+        break;
+      case 'tags':
+        if (value.length === 0) {
+          newErrors.tags = 'At least one tag is required';
+        } else {
+          delete newErrors.tags;
+        }
+        break;
+    }
+
+    setErrors(newErrors);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -165,17 +211,20 @@ export default function CreateList() {
       e.preventDefault();
       const newTag = tagInput.trim().toLowerCase();
       if (!formData.tags.includes(newTag) && formData.tags.length < 10) {
-        setFormData({ ...formData, tags: [...formData.tags, newTag] });
+        const newTags = [...formData.tags, newTag];
+        setFormData({ ...formData, tags: newTags });
         setTagInput('');
+        // Validate tags in real-time
+        validateField('tags', newTags);
       }
     }
   };
 
   const removeTag = (tagToRemove: string) => {
-    setFormData({ 
-      ...formData, 
-      tags: formData.tags.filter(tag => tag !== tagToRemove) 
-    });
+    const newTags = formData.tags.filter(tag => tag !== tagToRemove);
+    setFormData({ ...formData, tags: newTags });
+    // Validate tags in real-time
+    validateField('tags', newTags);
   };
 
   if (!isAuthenticated) {
@@ -315,8 +364,19 @@ export default function CreateList() {
                     id="title"
                     placeholder="e.g., Top Venture Capital Firms for Early Stage Startups"
                     value={formData.title}
-                    onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                    className={cn(errors.title && 'border-red-500')}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData({ ...formData, title: value });
+                      validateField('title', value);
+                    }}
+                    className={cn(
+                      'transition-colors duration-200',
+                      errors.title
+                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                        : formData.title.trim() && !errors.title
+                        ? 'border-green-500 focus:border-green-500 focus:ring-green-500/20'
+                        : ''
+                    )}
                   />
                   {errors.title && (
                     <p className="text-sm text-red-600 flex items-center gap-1">
@@ -335,9 +395,20 @@ export default function CreateList() {
                     id="description"
                     placeholder="Describe what this list contains and who it's for..."
                     value={formData.description}
-                    onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData({ ...formData, description: value });
+                      validateField('description', value);
+                    }}
                     rows={4}
-                    className={cn(errors.description && 'border-red-500')}
+                    className={cn(
+                      'transition-colors duration-200',
+                      errors.description
+                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                        : formData.description.trim() && !errors.description
+                        ? 'border-green-500 focus:border-green-500 focus:ring-green-500/20'
+                        : ''
+                    )}
                   />
                   {errors.description && (
                     <p className="text-sm text-red-600 flex items-center gap-1">
@@ -352,8 +423,21 @@ export default function CreateList() {
 
                 <div className="space-y-2">
                   <Label htmlFor="category">Category *</Label>
-                  <Select value={formData.category} onValueChange={(value) => setFormData({ ...formData, category: value })}>
-                    <SelectTrigger className={cn(errors.category && 'border-red-500')}>
+                  <Select
+                    value={formData.category}
+                    onValueChange={(value) => {
+                      setFormData({ ...formData, category: value });
+                      validateField('category', value);
+                    }}
+                  >
+                    <SelectTrigger className={cn(
+                      'transition-colors duration-200',
+                      errors.category
+                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                        : formData.category && !errors.category
+                        ? 'border-green-500 focus:border-green-500 focus:ring-green-500/20'
+                        : ''
+                    )}>
                       <SelectValue placeholder="Select a category" />
                     </SelectTrigger>
                     <SelectContent>
@@ -376,14 +460,28 @@ export default function CreateList() {
                 </div>
 
                 <div className="space-y-2">
-                  <Label htmlFor="tags">Tags</Label>
+                  <Label htmlFor="tags">Tags *</Label>
                   <Input
                     id="tags"
                     placeholder="Type a tag and press Enter"
                     value={tagInput}
                     onChange={(e) => setTagInput(e.target.value)}
                     onKeyDown={addTag}
+                    className={cn(
+                      'transition-colors duration-200',
+                      errors.tags
+                        ? 'border-red-500 focus:border-red-500 focus:ring-red-500/20'
+                        : formData.tags.length > 0 && !errors.tags
+                        ? 'border-green-500 focus:border-green-500 focus:ring-green-500/20'
+                        : ''
+                    )}
                   />
+                  {errors.tags && (
+                    <p className="text-sm text-red-600 flex items-center gap-1">
+                      <AlertCircle className="w-4 h-4" />
+                      {errors.tags}
+                    </p>
+                  )}
                   <div className="flex flex-wrap gap-2 mt-2">
                     {formData.tags.map((tag) => (
                       <Badge key={tag} variant="secondary" className="flex items-center gap-1">

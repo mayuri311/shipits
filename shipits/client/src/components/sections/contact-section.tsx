@@ -60,35 +60,32 @@ export function ContactSection() {
   };
 
   return (
-    <section id="contact" className="relative py-16 bg-gradient-to-b from-white to-gray-100">
+    <section id="contact" className="relative py-16 bg-gradient-to-b from-background to-muted">
       <div className="container mx-auto px-6 max-w-4xl">
         <ParallaxSection>
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Get In Touch</h2>
-            <p className="text-xl text-gray-600">Have questions or want to get involved?</p>
+            <h2 className="text-4xl font-bold mb-4 text-foreground">Get In Touch</h2>
+            <p className="text-xl text-muted-foreground">Have questions or want to get involved?</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
             <div>
-              <h3 className="text-2xl font-semibold mb-6">Contact Information</h3>
+              <h3 className="text-2xl font-semibold mb-6 text-foreground">Contact Information</h3>
               <div className="space-y-4">
                 <div className="flex items-center">
                   <Mail className="text-maroon mr-4" size={24} />
-                  <span className="text-gray-700">hello@shipitscmu.org</span>
+                  <span className="text-foreground">osprey@velroi.com</span>
                 </div>
                 <div className="flex items-center">
                   <MapPin className="text-maroon mr-4" size={24} />
-                  <span className="text-gray-700">Carnegie Mellon University, Pittsburgh, PA</span>
+                  <span className="text-foreground">Carnegie Mellon University, Pittsburgh, PA</span>
                 </div>
-                <div className="flex items-center">
-                  <MessageSquare className="text-maroon mr-4" size={24} />
-                  <span className="text-gray-700">Join our Discord Community</span>
-                </div>
+
               </div>
             </div>
 
             <div>
-              <h3 className="text-2xl font-semibold mb-6">Quick Message</h3>
+              <h3 className="text-2xl font-semibold mb-6 text-foreground">Quick Message</h3>
               <form onSubmit={handleSubmit} className="space-y-4">
                 <Input
                   type="text"
@@ -97,7 +94,7 @@ export function ContactSection() {
                   value={formData.name}
                   onChange={handleInputChange}
                   required
-                  className="border-2 border-gray-200 focus:border-maroon"
+                  className="border-2 border-border focus:border-maroon"
                 />
                 <Input
                   type="email"
@@ -106,7 +103,7 @@ export function ContactSection() {
                   value={formData.email}
                   onChange={handleInputChange}
                   required
-                  className="border-2 border-gray-200 focus:border-maroon"
+                  className="border-2 border-border focus:border-maroon"
                 />
                 <Textarea
                   name="message"
@@ -115,7 +112,7 @@ export function ContactSection() {
                   value={formData.message}
                   onChange={handleInputChange}
                   required
-                  className="border-2 border-gray-200 focus:border-maroon resize-none"
+                  className="border-2 border-border focus:border-maroon resize-none"
                 />
                 <Button 
                   type="submit" 

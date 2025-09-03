@@ -53,12 +53,12 @@ export function ProjectsSection() {
   const duplicatedProjects = [...mockProjects, ...mockProjects];
 
   return (
-    <section id="projects" className="relative py-16 bg-gradient-to-b from-white to-gray-50">
+    <section id="projects" className="relative py-16 bg-gradient-to-b from-background to-muted">
       <div className="container mx-auto px-6 max-w-6xl">
         <ParallaxSection>
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Recent Projects</h2>
-            <p className="text-xl text-gray-600">Discover what our community is building</p>
+            <h2 className="text-4xl font-bold mb-4 text-foreground">Recent Projects</h2>
+            <p className="text-xl text-muted-foreground">Discover what our community is building</p>
           </div>
 
           {/* Horizontal Scrolling Project Carousel */}
@@ -67,22 +67,22 @@ export function ProjectsSection() {
               {duplicatedProjects.map((project, index) => {
                 const IconComponent = project.icon;
                 return (
-                  <div 
+                  <div
                     key={`${project.id}-${index}`}
-                    className="flex-none w-80 bg-white border-2 border-gray-200 p-6 hover:border-maroon transition-colors duration-300 group"
+                    className="flex-none w-80 bg-card border-2 border-border p-6 hover:border-maroon transition-colors duration-300 group"
                   >
-                    <div className={`bg-gradient-to-br ${project.gradient} h-48 rounded-lg mb-4 flex items-center justify-center border border-gray-200`}>
+                    <div className={`bg-gradient-to-br ${project.gradient} h-48 rounded-lg mb-4 flex items-center justify-center border border-border`}>
                       <IconComponent className={`${project.iconColor}`} size={64} />
                     </div>
-                    <h3 className="text-xl font-semibold mb-2 group-hover:text-maroon transition-colors">
+                    <h3 className="text-xl font-semibold mb-2 text-foreground group-hover:text-maroon transition-colors">
                       {project.title}
                     </h3>
-                    <p className="text-gray-600 text-sm mb-3">{project.description}</p>
+                    <p className="text-muted-foreground text-sm mb-3">{project.description}</p>
                     <div className="flex items-center justify-between">
-                      <span className="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded">
+                      <span className="text-xs bg-muted text-muted-foreground px-2 py-1 rounded">
                         {project.category}
                       </span>
-                      <div className="flex items-center text-sm text-gray-500">
+                      <div className="flex items-center text-sm text-muted-foreground">
                         <Heart className="mr-1" size={16} />
                         <span>{project.likes}</span>
                       </div>
@@ -105,19 +105,19 @@ export function ProjectsSection() {
                   <DialogTitle className="text-2xl font-bold">Osprey @ CMU Forum</DialogTitle>
                 </DialogHeader>
                 <div className="py-6">
-                  <p className="text-gray-600 mb-4">
+                  <p className="text-muted-foreground mb-4">
                     The Osprey @ CMU forum is currently under development. Here you'll be able to:
                   </p>
-                  <ul className="list-disc list-inside space-y-2 text-gray-600">
+                  <ul className="list-disc list-inside space-y-2 text-muted-foreground">
                     <li>Browse all student projects with detailed descriptions</li>
                     <li>Submit your own projects for community feedback</li>
                     <li>Connect with project creators and collaborators</li>
                     <li>Join discussion threads about development challenges</li>
                     <li>Find teammates for new project ideas</li>
                   </ul>
-                  <div className="mt-6 p-4 bg-gray-50 rounded-lg">
-                    <p className="text-sm text-gray-500">
-                      <strong>Coming Soon:</strong> Full forum functionality with user authentication, 
+                  <div className="mt-6 p-4 bg-muted rounded-lg">
+                    <p className="text-sm text-muted-foreground">
+                      <strong>Coming Soon:</strong> Full forum functionality with user authentication,
                       project submissions, and community features.
                     </p>
                   </div>

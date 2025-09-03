@@ -4,6 +4,9 @@ export interface IContact extends Document {
   name: string;
   email: string;
   message: string;
+  emailSent?: boolean;
+  emailSentAt?: Date;
+  emailError?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -32,6 +35,17 @@ const ContactSchema = new Schema<IContact>({
     required: true,
     trim: true,
     maxlength: 1000
+  },
+  emailSent: {
+    type: Boolean,
+    default: false
+  },
+  emailSentAt: {
+    type: Date
+  },
+  emailError: {
+    type: String,
+    trim: true
   }
 }, {
   timestamps: true, // Automatically adds createdAt and updatedAt

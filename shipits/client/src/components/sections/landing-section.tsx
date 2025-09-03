@@ -30,6 +30,8 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
             <button
               className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-2 py-1 text-sm sm:text-base"
               onClick={() => onNavigate("landing")}
+              aria-label="Navigate to Ship Its home section"
+              title="Home"
             >
               <TranslatedText
                 sourceType="ui"
@@ -68,6 +70,8 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                 <button
                   className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
                   onClick={() => onNavigate("contact")}
+                  aria-label="Navigate to contact section"
+                  title="Contact"
                 >
                   <TranslatedText
                     sourceType="ui"
@@ -80,6 +84,8 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                 <button
                   className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
                   onClick={() => onNavigate("partners")}
+                  aria-label="Navigate to partners section"
+                  title="Partners"
                 >
                   <TranslatedText
                     sourceType="ui"
@@ -92,11 +98,14 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
               </div>
 
               {/* Mobile: More options button */}
-              <Button 
-                variant="ghost" 
-                size="sm" 
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setIsMenuOpen(!isMenuOpen)}
                 className="px-2 text-xs relative md:hidden"
+                aria-label={isMenuOpen ? "Close mobile menu" : "Open mobile menu"}
+                aria-expanded={isMenuOpen}
+                title={isMenuOpen ? "Close mobile menu" : "Open mobile menu"}
               >
                 {isMenuOpen ? <X className="w-3 h-3" /> : <Menu className="w-3 h-3" />}
                 {!isMenuOpen && <span className="absolute -top-1 -right-1 w-2 h-2 bg-maroon rounded-full"></span>}
@@ -122,6 +131,7 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                 <button
                   className="flex items-center justify-start px-3 py-2 text-xs text-foreground hover:text-maroon hover:bg-accent transition-colors rounded"
                   onClick={() => { onNavigate("contact"); setIsMenuOpen(false); }}
+                  aria-label="Navigate to contact section (mobile menu)"
                 >
                   <TranslatedText
                     sourceType="ui"
@@ -134,6 +144,7 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                 <button
                   className="flex items-center justify-start px-3 py-2 text-xs text-foreground hover:text-maroon hover:bg-accent transition-colors rounded"
                   onClick={() => { onNavigate("partners"); setIsMenuOpen(false); }}
+                  aria-label="Navigate to partners section (mobile menu)"
                 >
                   <TranslatedText
                     sourceType="ui"

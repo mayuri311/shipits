@@ -37,37 +37,51 @@ export function FAQSection() {
   };
 
   return (
-    <section id="faq" className="relative py-16 bg-gradient-to-b from-gray-50 to-white">
+    <section id="faq" className="relative py-16 bg-gradient-to-b from-muted to-background">
       <div className="container mx-auto px-6 max-w-4xl">
         <ParallaxSection>
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Frequently Asked Questions</h2>
-            <p className="text-xl text-gray-600">Everything you need to know about Osprey @ CMU</p>
+            <h2 className="text-4xl font-bold mb-4 text-foreground">Frequently Asked Questions</h2>
+            <p className="text-xl text-muted-foreground">Everything you need to know about Osprey @ CMU</p>
           </div>
 
           <div className="space-y-4">
             {faqItems.map((item) => {
               const isOpen = openItems.includes(item.id);
               return (
-                <div 
+                <div
                   key={item.id}
-                  className="bg-white border-2 border-gray-200 transition-colors duration-300 hover:border-maroon"
+                  className={`bg-card border-2 transition-all duration-300 ${
+                    isOpen
+                      ? 'border-maroon bg-maroon/5 shadow-lg'
+                      : 'border-border hover:border-maroon'
+                  }`}
                 >
-                  <button 
-                    className="w-full p-6 text-left flex items-center justify-between"
+                  <button
+                    className={`w-full p-6 text-left flex items-center justify-between transition-colors duration-300 ${
+                      isOpen ? 'bg-maroon/10' : 'hover:bg-maroon/5'
+                    }`}
                     onClick={() => toggleItem(item.id)}
                   >
-                    <h3 className="text-lg font-semibold">{item.question}</h3>
-                    <ChevronDown 
-                      className={`text-maroon transition-transform duration-300 ${isOpen ? 'rotate-180' : ''}`}
+                    <h3 className={`text-lg font-semibold transition-colors duration-300 ${
+                      isOpen ? 'text-maroon' : 'text-foreground'
+                    }`}>
+                      {item.question}
+                    </h3>
+                    <ChevronDown
+                      className={`text-maroon transition-all duration-300 ${
+                        isOpen ? 'rotate-180 scale-110' : ''
+                      }`}
                       size={20}
                     />
                   </button>
-                  {isOpen && (
-                    <div className="p-6 pt-0 border-t border-gray-100">
-                      <p className="text-gray-600">{item.answer}</p>
+                  <div className={`overflow-hidden transition-all duration-300 ease-in-out ${
+                    isOpen ? 'max-h-96 opacity-100' : 'max-h-0 opacity-0'
+                  }`}>
+                    <div className="p-6 border-t border-border">
+                      <p className="text-muted-foreground leading-relaxed">{item.answer}</p>
                     </div>
-                  )}
+                  </div>
                 </div>
               );
             })}

@@ -59,7 +59,7 @@ import {
   Translation, List, ListItem
 } from "./models/index";
 import { nanoid } from 'nanoid';
-import { sendEmailViaSES, buildVerificationEmailHtml, buildCommentNotificationEmailHtml, buildPasswordResetEmailHtml } from './services/sesEmail';
+import { sendEmailViaSES, buildVerificationEmailHtml, buildCommentNotificationEmailHtml, buildPasswordResetEmailHtml, buildContactFormEmailHtml } from './services/sesEmail';
 import { Conversation } from './models/Conversation';
 import { Message } from './models/Message';
 
@@ -2668,18 +2668,70 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post('/api/contact', validateBody(contactSchema), async (req, res) => {
     try {
       const { name, email, message } = req.body;
-      
+
       // Create contact submission
       const contact = new Contact({
         name,
         email,
         message
       });
-      
+
       await contact.save();
-      
+
       console.log('📧 New contact form submission:', { name, email, message: message.substring(0, 50) + '...' });
-      
+
+      // Send email notification to thomas@velroi.com
+      try {
+        const emailHtml = buildContactFormEmailHtml({
+          name,
+          email,
+          message,
+          timestamp: new Date().toLocaleString('en-US', {
+            weekday: 'long',
+            year: 'numeric',
+            month: 'long',
+            day: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            timeZoneName: 'short'
+          })
+        });
+
+        await sendEmailViaSES({
+          to: 'thomas@velroi.com',
+          subject: `New Contact Form Submission from ${name}`,
+          html: emailHtml,
+          text: `New contact form submission:
+
+From: ${name} <${email}>
+
+Message:
+${message}
+
+Submitted on: ${new Date().toLocaleString()}`
+        });
+
+        // Update contact record with successful email sending
+        await Contact.findByIdAndUpdate(contact._id, {
+          emailSent: true,
+          emailSentAt: new Date(),
+          emailError: null
+        });
+
+        console.log('✅ Contact form email sent to thomas@velroi.com');
+      } catch (emailError) {
+        console.error('❌ Failed to send contact form email:', emailError);
+
+        // Update contact record with email sending failure
+        await Contact.findByIdAndUpdate(contact._id, {
+          emailSent: false,
+          emailError: emailError instanceof Error ? emailError.message : 'Unknown email error'
+        });
+
+        // Don't fail the entire request if email fails
+      }
+
       res.status(201).json({
         success: true,
         message: 'Contact form submitted successfully',
@@ -2688,7 +2740,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           createdAt: contact.createdAt
         }
       });
-      
+
     } catch (error: any) {
       console.error('Contact form submission error:', error);
       res.status(500).json({

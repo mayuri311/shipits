@@ -51,11 +51,11 @@ export default function Profile() {
       try {
         if (!user?._id) return;
         const [followersRes, followingRes] = await Promise.all([
-          usersApi.getFollowers(user._id.toString()),
-          usersApi.getFollowing(user._id.toString()),
+          usersApi.getFollowers(user._id!.toString()),
+          usersApi.getFollowing(user._id!.toString()),
         ]);
-        const followers = followersRes?.success ? followersRes.data.users : [];
-        const following = followingRes?.success ? followingRes.data.users : [];
+        const followers = followersRes?.success ? followersRes.data?.users || [] : [];
+        const following = followingRes?.success ? followingRes.data?.users || [] : [];
         setFollowersCount(followers.length);
         setFollowingCount(following.length);
         if (currentUser?._id) {
@@ -72,16 +72,29 @@ export default function Profile() {
     if (!isAuthenticated || !user?._id || isOwnProfile) return;
     try {
       if (isFollowing) {
-        await usersApi.unfollowUser(user._id.toString());
+        await usersApi.unfollowUser(user._id!.toString());
         setIsFollowing(false);
         setFollowersCount((c) => Math.max(0, c - 1));
+        toast({
+          title: "Unfollowed",
+          description: `You are no longer following ${user.fullName || user.username}.`,
+        });
       } else {
-        await usersApi.followUser(user._id.toString());
+        await usersApi.followUser(user._id!.toString());
         setIsFollowing(true);
         setFollowersCount((c) => c + 1);
+        toast({
+          title: "Following",
+          description: `You are now following ${user.fullName || user.username}.`,
+        });
       }
-    } catch (e) {
-      // noop
+    } catch (e: any) {
+      console.error('Follow/unfollow error:', e);
+      toast({
+        title: "Error",
+        description: `Failed to ${isFollowing ? 'unfollow' : 'follow'} user. Please try again.`,
+        variant: "destructive",
+      });
     }
   };
 
@@ -92,7 +105,7 @@ export default function Profile() {
     enabled: !!user?._id,
   });
 
-  const userProjects = userProjectsData?.success ? userProjectsData.data.items : [];
+  const userProjects = userProjectsData?.success ? userProjectsData.data?.items : [];
 
   // Fetch user's backed projects (subscriptions)
   const { data: backedProjectsData, isLoading: isLoadingBackedProjects } = useQuery({
@@ -101,7 +114,7 @@ export default function Profile() {
     enabled: !!user?._id,
   });
 
-  const backedProjects = backedProjectsData?.success ? backedProjectsData.data.projects : [];
+  const backedProjects = backedProjectsData?.success ? backedProjectsData.data?.projects : [];
 
   // Fetch user's collaborations
   const { data: collaborationsData, isLoading: isLoadingCollaborations } = useQuery({
@@ -110,7 +123,7 @@ export default function Profile() {
     enabled: !!user?._id,
   });
 
-  const userCollaborations = collaborationsData?.success ? collaborationsData.data.projects : [];
+  const userCollaborations = collaborationsData?.success ? collaborationsData.data?.projects : [];
 
   // Gamification: metrics & badges
   const { data: metricsData } = useQuery({
@@ -140,7 +153,7 @@ export default function Profile() {
       const response = await usersApi.updateUser(user._id.toString(), updateData);
       console.log('Update response:', response);
       
-      if (response.success) {
+      if (response.success && response.data?.user) {
         updateUser(response.data.user);
         setIsEditing(false);
         toast({
@@ -168,7 +181,7 @@ export default function Profile() {
 
   const handleProfilePictureUpload = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    
+
     const file = files[0];
     if (!file.type.startsWith('image/')) {
       toast({
@@ -178,7 +191,7 @@ export default function Profile() {
       });
       return;
     }
-    
+
     // Allow larger files since we'll compress them
     if (file.size > 50 * 1024 * 1024) { // 50MB limit for original file
       toast({
@@ -188,7 +201,7 @@ export default function Profile() {
       });
       return;
     }
-    
+
     setUploadingProfilePic(true);
     try {
       // Show compression progress
@@ -199,7 +212,7 @@ export default function Profile() {
 
       // Compress the image before upload
       const compressionResult = await compressProfileImage(file);
-      
+
       console.log('Image compression result:', {
         originalSize: formatFileSize(compressionResult.originalSize),
         compressedSize: formatFileSize(compressionResult.compressedSize),
@@ -207,18 +220,32 @@ export default function Profile() {
         dimensions: `${compressionResult.width}x${compressionResult.height}`
       });
 
-      // Set the compressed image directly (skip API upload since we have the data URL)
-      setEditedProfile(prev => ({ ...prev, profileImage: compressionResult.dataUrl }));
-      
-      toast({
-        title: "Profile picture processed",
-        description: `Image compressed from ${formatFileSize(compressionResult.originalSize)} to ${formatFileSize(compressionResult.compressedSize)} (${compressionResult.compressionRatio.toFixed(1)}x smaller).`,
-      });
+      // Upload the compressed image to the server
+      const uploadResult = await uploadApi.uploadProcessedImages([{
+        filename: `profile-${Date.now()}.jpg`,
+        originalName: file.name,
+        data: compressionResult.dataUrl,
+        size: compressionResult.compressedSize,
+        mimetype: 'image/jpeg'
+      }]);
+
+      if (uploadResult.success && uploadResult.data?.files && uploadResult.data.files.length > 0) {
+        const uploadedFile = uploadResult.data.files[0];
+        // Update the edited profile with the uploaded image URL
+        setEditedProfile(prev => ({ ...prev, profileImage: (uploadedFile as any).url }));
+
+        toast({
+          title: "Profile picture uploaded",
+          description: `Image processed and uploaded successfully (${compressionResult.compressionRatio.toFixed(1)}x compression).`,
+        });
+      } else {
+        throw new Error('Upload failed');
+      }
     } catch (error) {
-      console.error('Profile picture compression error:', error);
+      console.error('Profile picture upload error:', error);
       toast({
-        title: "Processing failed",
-        description: "Failed to process the image. Please try a different image.",
+        title: "Upload failed",
+        description: "Failed to upload the image. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -227,7 +254,7 @@ export default function Profile() {
   };
 
   const handleRemoveProfilePicture = () => {
-    setEditedProfile(prev => ({ ...prev, profileImage: null }));
+    setEditedProfile(prev => ({ ...prev, profileImage: '' }));
     toast({
       title: "Profile picture removed",
       description: "Your profile picture will be removed when you save changes.",
@@ -240,7 +267,7 @@ export default function Profile() {
       return;
     }
     try {
-      const res = await reportsApi.createReport({ targetType: 'user', targetId: user._id.toString(), reason: userReportReason, details: userReportDetails || undefined });
+      const res = await reportsApi.createReport({ targetType: 'user', targetId: user._id!.toString(), reason: userReportReason, details: userReportDetails || undefined });
       if (res.success) {
         toast({ title: 'Reported', description: 'Thanks. Moderators will review this profile.' });
         setShowUserReport(false);
@@ -392,7 +419,7 @@ export default function Profile() {
                 <div className="relative group">
                   {(isOwnProfile && isEditing ? editedProfile.profileImage : user.profileImage) ? (
                     <img
-                      src={isOwnProfile && isEditing ? editedProfile.profileImage || user.profileImage : user.profileImage}
+                      src={isOwnProfile && isEditing ? (editedProfile.profileImage || user.profileImage) || undefined : user.profileImage || undefined}
                       alt={`${user.fullName || user.username || 'User'} profile picture`}
                       className="w-24 h-24 rounded-full object-cover border-2 border-gray-200"
                       onError={(e) => {
@@ -606,7 +633,7 @@ export default function Profile() {
                 ) : user.bio ? (
                   <TranslatedMarkdown
                     sourceType="user"
-                    sourceId={user._id.toString()}
+                    sourceId={user._id?.toString() || ''}
                     field="bio"
                     text={user.bio}
                     className="text-gray-700"
@@ -705,32 +732,32 @@ export default function Profile() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
                     <p className="text-gray-500">Loading projects...</p>
                   </div>
-                ) : userProjects.length > 0 ? (
+                ) : (userProjects || []).length > 0 ? (
                   <div className="space-y-4">
-                    {userProjects.map((project: Project) => (
-                      <div key={project._id?.toString()} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                    {(userProjects || []).map((project: Project) => (
+                      <div key={project._id?.toString()} className="border border-border rounded-lg p-6 hover:shadow-md transition-shadow bg-card">
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="text-lg font-semibold mb-2">
-                                <Link href={`/forum/project/${project._id}`} className="text-gray-900 hover:text-maroon">
+                                <Link href={`/forum/project/${project._id}`} className="text-foreground hover:text-maroon">
                                 {project.title}
                               </Link>
                             </h3>
-                            <p className="text-gray-600 text-sm mb-2">{project.description}</p>
+                            <p className="text-muted-foreground text-sm mb-2">{project.description}</p>
                             <div className="flex flex-wrap gap-2 mb-2">
                               {project.tags?.map((tag) => (
-                                <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                                <span key={tag} className="px-2 py-1 bg-muted text-muted-foreground rounded-full text-xs">
                                   {tag}
                                 </span>
                               ))}
                             </div>
                           </div>
-                          <div className="text-right text-sm text-gray-500">
+                          <div className="text-right text-sm text-muted-foreground">
                             <p>Status: <span className="capitalize font-medium">{project.status}</span></p>
-                            <p className="mt-1">Created: {new Date(project.createdAt).toLocaleDateString()}</p>
+                            <p className="mt-1">Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'Unknown'}</p>
                           </div>
                         </div>
-                        <div className="flex justify-between items-center text-sm text-gray-500">
+                        <div className="flex justify-between items-center text-sm text-muted-foreground">
                           <div className="flex gap-4">
                             <span>👁️ {project.analytics?.views || 0} views</span>
                             <span>❤️ {project.likes?.length || 0} likes</span>
@@ -771,35 +798,35 @@ export default function Profile() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
                     <p className="text-gray-500">Loading backed projects...</p>
                   </div>
-                ) : backedProjects.length > 0 ? (
+                ) : (backedProjects || []).length > 0 ? (
                   <div className="space-y-4">
-                    {backedProjects.map((project: Project) => (
-                      <div key={project._id?.toString()} className="border border-gray-200 rounded-lg p-6 hover:shadow-md transition-shadow">
+                    {(backedProjects || []).map((project: Project) => (
+                      <div key={project._id?.toString()} className="border border-border rounded-lg p-6 hover:shadow-md transition-shadow bg-card">
                         <div className="flex justify-between items-start mb-4">
                           <div>
                             <h3 className="text-lg font-semibold mb-2">
-                                <Link href={`/forum/project/${project._id}`} className="text-gray-900 hover:text-maroon">
+                                <Link href={`/forum/project/${project._id}`} className="text-foreground hover:text-maroon">
                                 {project.title}
                               </Link>
                             </h3>
-                            <p className="text-gray-600 text-sm mb-2">{project.description}</p>
-                            <p className="text-gray-500 text-xs mb-2">
-                              by {project.ownerId?.fullName || project.ownerId?.username}
+                            <p className="text-muted-foreground text-sm mb-2">{project.description}</p>
+                            <p className="text-muted-foreground/70 text-xs mb-2">
+                              by {(project.ownerId as any)?.fullName || (project.ownerId as any)?.username}
                             </p>
                             <div className="flex flex-wrap gap-2 mb-2">
                               {project.tags?.map((tag) => (
-                                <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                                <span key={tag} className="px-2 py-1 bg-muted text-muted-foreground rounded-full text-xs">
                                   {tag}
                                 </span>
                               ))}
                             </div>
                           </div>
-                          <div className="text-right text-sm text-gray-500">
+                          <div className="text-right text-sm text-muted-foreground">
                             <p>Status: <span className="capitalize font-medium">{project.status}</span></p>
-                            <p className="mt-1">Created: {new Date(project.createdAt).toLocaleDateString()}</p>
+                            <p className="mt-1">Created: {project.createdAt ? new Date(project.createdAt).toLocaleDateString() : 'Unknown'}</p>
                           </div>
                         </div>
-                        <div className="flex justify-between items-center text-sm text-gray-500">
+                        <div className="flex justify-between items-center text-sm text-muted-foreground">
                           <div className="flex gap-4">
                             <span>👁️ {project.analytics?.views || 0} views</span>
                             <span>❤️ {project.likes?.length || 0} likes</span>
@@ -841,40 +868,40 @@ export default function Profile() {
                     <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4"></div>
                     <p className="text-gray-500">Loading collaborations...</p>
                   </div>
-                ) : userCollaborations.length > 0 ? (
+                ) : (userCollaborations || []).length > 0 ? (
                   <div className="space-y-4">
-                    {userCollaborations.map((project: Project) => (
-                      <div key={project._id?.toString()} className="border border-gray-200 rounded-lg p-4 sm:p-6 hover:shadow-md transition-shadow">
+                    {(userCollaborations || []).map((project: Project) => (
+                      <div key={project._id?.toString()} className="border border-border rounded-lg p-4 sm:p-6 hover:shadow-md transition-shadow bg-card">
                         <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-4 mb-4">
                           <div className="flex-1 min-w-0">
                             <h3 className="text-lg font-semibold mb-2">
-                              <Link href={`/forum/project/${project._id}`} className="text-gray-900 hover:text-maroon line-clamp-2 sm:line-clamp-1">
+                              <Link href={`/forum/project/${project._id?.toString() || ''}`} className="text-foreground hover:text-maroon line-clamp-2 sm:line-clamp-1">
                                 {project.title}
                               </Link>
                             </h3>
-                            <p className="text-gray-600 text-sm mb-3">
-                              <TranslatedMarkdown 
+                            <p className="text-muted-foreground text-sm mb-3">
+                              <TranslatedMarkdown
                                 sourceType="project"
-                                sourceId={project._id}
+                                sourceId={project._id?.toString() || ''}
                                 field="description"
                                 text={project.description}
                                 className="line-clamp-3 sm:line-clamp-2"
                               />
                             </p>
-                            <p className="text-gray-500 text-xs mb-3">
-                              Created by {project.ownerId?.fullName || project.ownerId?.username}
+                            <p className="text-muted-foreground/70 text-xs mb-3">
+                              Created by {(project.ownerId as any)?.fullName || (project.ownerId as any)?.username}
                             </p>
-                            
+
                             {/* Tags - Mobile Optimized */}
                             {project.tags && project.tags.length > 0 && (
                               <div className="flex flex-wrap gap-1 sm:gap-2 mb-3">
                                 {project.tags.slice(0, isMobile ? 3 : 6).map((tag) => (
-                                  <span key={tag} className="px-2 py-1 bg-gray-100 text-gray-700 rounded-full text-xs">
+                                  <span key={tag} className="px-2 py-1 bg-muted text-muted-foreground rounded-full text-xs">
                                     #{tag}
                                   </span>
                                 ))}
                                 {isMobile && project.tags.length > 3 && (
-                                  <span className="px-2 py-1 bg-gray-200 text-gray-600 rounded-full text-xs">
+                                  <span className="px-2 py-1 bg-muted/50 text-muted-foreground/70 rounded-full text-xs">
                                     +{project.tags.length - 3}
                                   </span>
                                 )}
@@ -883,29 +910,29 @@ export default function Profile() {
                             
                             {/* Collaboration Badge - Mobile Optimized */}
                             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 w-fit">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300 w-fit">
                                 <User className="w-3 h-3" />
                                 Collaborator
                               </span>
-                              <span className="text-xs text-gray-500">
+                              <span className="text-xs text-muted-foreground">
                                 Team of {(project.collaborators?.length || 0) + 1} member{((project.collaborators?.length || 0) + 1) !== 1 ? 's' : ''}
                               </span>
                             </div>
                           </div>
                           
                           {/* Status Section - Mobile Optimized */}
-                          <div className="flex sm:flex-col sm:text-right text-sm text-gray-500 gap-4 sm:gap-0 shrink-0">
+                          <div className="flex sm:flex-col sm:text-right text-sm text-muted-foreground gap-4 sm:gap-0 shrink-0">
                             <div>
                               <span className="sm:hidden text-xs font-medium">Status: </span>
                               <span className="capitalize font-medium">{project.status}</span>
                             </div>
                             <div className="sm:mt-1">
                               <span className="sm:hidden text-xs">Updated: </span>
-                              <span className="text-xs sm:text-sm">{new Date(project.updatedAt).toLocaleDateString()}</span>
+                              <span className="text-xs sm:text-sm">{project.updatedAt ? new Date(project.updatedAt).toLocaleDateString() : 'Unknown'}</span>
                             </div>
                           </div>
                         </div>
-                        <div className="flex justify-between items-center text-sm text-gray-500">
+                        <div className="flex justify-between items-center text-sm text-muted-foreground">
                           <div className="flex gap-4">
                             <span>👁️ {project.analytics?.views || 0} views</span>
                             <span>❤️ {project.likes?.length || 0} likes</span>

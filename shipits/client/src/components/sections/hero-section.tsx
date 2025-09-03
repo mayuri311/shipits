@@ -17,10 +17,18 @@ export function HeroSection() {
               connect with peers, and turn ideas into reality. Join our community of makers, builders, and innovators.
             </p>
             <div className="flex flex-col sm:flex-row gap-4">
-              <button className="bg-maroon text-white px-8 py-4 hover:bg-maroon-dark transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-maroon rounded">
+              <button
+                className="bg-maroon text-white px-8 py-4 hover:bg-maroon-dark transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-maroon rounded"
+                aria-label="Get started with Ship Its at CMU - navigate to forum"
+                onClick={() => window.location.href = '/forum'}
+              >
                 GET STARTED
               </button>
-              <button className="border-2 border-foreground text-foreground bg-background px-8 py-4 hover:bg-foreground hover:text-background transition-all duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground focus-visible:ring-offset-2 rounded">
+              <button
+                className="border-2 border-border text-foreground bg-background px-8 py-4 hover:bg-accent hover:text-accent-foreground transition-all duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 rounded"
+                aria-label="Learn more about Ship Its at CMU - scroll to about section"
+                onClick={() => document.getElementById('contact')?.scrollIntoView({ behavior: 'smooth' })}
+              >
                 LEARN MORE
               </button>
             </div>

@@ -37,21 +37,21 @@ export function CalendarSection() {
   };
 
   return (
-    <section id="calendar" className="relative py-16 bg-gradient-to-b from-gray-50 to-white">
+    <section id="calendar" className="relative py-16 bg-gradient-to-b from-muted to-background">
       <div className="container mx-auto px-6 max-w-6xl">
         <ParallaxSection>
           <div className="text-center mb-16">
-            <h2 className="text-4xl font-bold mb-4">Upcoming Events</h2>
-            <p className="text-xl text-gray-600">Stay connected with the Osprey @ CMU community</p>
+            <h2 className="text-4xl font-bold mb-4 text-foreground">Upcoming Events</h2>
+            <p className="text-xl text-muted-foreground">Stay connected with the Osprey @ CMU community</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
             {mockEvents.map((event) => {
               const { month, day } = formatDate(event.date);
               return (
-                <div 
+                <div
                   key={event.id}
-                  className="bg-white border-2 border-gray-200 p-6 hover:border-maroon transition-colors duration-300 group"
+                  className="bg-card border-2 border-border p-6 hover:border-maroon transition-colors duration-300 group"
                 >
                   <div className="flex items-start justify-between mb-4">
                     <div className="bg-maroon text-white p-3 text-center min-w-16">
@@ -59,14 +59,14 @@ export function CalendarSection() {
                       <div className="text-2xl font-bold">{day}</div>
                     </div>
                     <div className="text-right">
-                      <span className="text-sm text-gray-500">{event.time}</span>
+                      <span className="text-sm text-muted-foreground">{event.time}</span>
                     </div>
                   </div>
-                  <h3 className="text-xl font-semibold mb-2 group-hover:text-maroon transition-colors">
+                  <h3 className="text-xl font-semibold mb-2 text-foreground group-hover:text-maroon transition-colors">
                     {event.title}
                   </h3>
-                  <p className="text-gray-600 text-sm mb-4">{event.description}</p>
-                  <div className="flex items-center text-sm text-gray-500">
+                  <p className="text-muted-foreground text-sm mb-4">{event.description}</p>
+                  <div className="flex items-center text-sm text-muted-foreground">
                     <MapPin className="mr-2" size={16} />
                     {event.location}
                   </div>

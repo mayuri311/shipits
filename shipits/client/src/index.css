@@ -55,7 +55,7 @@
   --background: hsl(240, 10%, 3.9%);
   --foreground: hsl(0, 0%, 98%);
   --muted: hsl(240, 3.7%, 15.9%);
-  --muted-foreground: hsl(240, 5%, 64.9%);
+  --muted-foreground: hsl(240, 5%, 85%);
   --popover: hsl(240, 10%, 3.9%);
   --popover-foreground: hsl(0, 0%, 98%);
   --card: hsl(240, 10%, 3.9%);
@@ -423,6 +423,8 @@ html {
 .dark .theme-shadow-xl {
   box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.3);
 }
+
+/* Dark mode specific text adjustments for better visibility */
 
 /* Theme-aware divider */
 .theme-divider {

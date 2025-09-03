@@ -800,7 +800,7 @@ export default function ProjectDetail() {
                           <select
                             value={projectEditForm.status}
                             onChange={(e) => setProjectEditForm(prev => ({ ...prev, status: e.target.value as any }))}
-                            className="px-3 py-1 rounded-full text-sm font-medium border border-gray-300"
+                            className="px-3 py-1 rounded-full text-sm font-medium border border-border"
                           >
                             <option value="active">Active</option>
                             <option value="completed">Completed</option>
@@ -1289,7 +1289,7 @@ export default function ProjectDetail() {
                                               showTitle={false}
                                             />
                                             {media.caption && (
-                                              <p className="text-sm text-gray-600 mt-2 px-2">
+                                              <p className="text-sm text-muted-foreground mt-2 px-2">
                                                 {media.caption}
                                               </p>
                                             )}
@@ -1467,13 +1467,13 @@ export default function ProjectDetail() {
                     <div className="space-y-6">
                       {validUpdates.length > 0 ? (
                         validUpdates.map((update, index) => (
-                          <div key={update._id || index} className="bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
+                          <div key={update._id || index} className="bg-card border border-border rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow">
                             <div className="flex items-start justify-between mb-3">
-                              <h4 className="text-lg font-semibold text-gray-900">
+                              <h4 className="text-lg font-semibold text-foreground">
                                 {update.title}
                               </h4>
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-gray-500">
+                                <span className="text-sm text-muted-foreground">
                                   {formatDate(update.createdAt)}
                                 </span>
                                 {/* Show edit/delete options for project owner and collaborators */}
@@ -1508,19 +1508,19 @@ export default function ProjectDetail() {
                           </div>
                         ))
                       ) : (
-                        <div className="text-center py-16 bg-white rounded-lg border border-gray-200">
-                          <div className="mx-auto w-24 h-24 bg-gray-100 rounded-full flex items-center justify-center mb-4">
-                            <MessageSquare className="w-8 h-8 text-gray-400" />
+                        <div className="text-center py-16 bg-card rounded-lg border border-border">
+                          <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-4">
+                            <MessageSquare className="w-8 h-8 text-muted-foreground" />
                           </div>
-                          <h3 className="text-lg font-medium text-gray-900 mb-2">No updates yet</h3>
-                          <p className="text-gray-500 mb-4 max-w-sm mx-auto">
-                            {project && canManageProject 
+                          <h3 className="text-lg font-medium text-foreground mb-2">No updates yet</h3>
+                          <p className="text-muted-foreground mb-4 max-w-sm mx-auto">
+                            {project && canManageProject
                               ? "Share your progress, new features, and milestones with the community!"
                               : `Stay tuned for updates from ${project?.ownerId?.fullName || project?.ownerId?.username || 'the project owner'}.`
                             }
                           </p>
                           {project && canManageProject && (
-                            <p className="text-sm text-gray-400">
+                            <p className="text-sm text-muted-foreground/70">
                               👆 Use the form above to post your first update
                             </p>
                           )}
@@ -1548,7 +1548,7 @@ export default function ProjectDetail() {
                           withUploads
                         />
                         <div className="flex justify-between items-center">
-                          <p className="text-sm text-gray-500">
+                          <p className="text-sm text-muted-foreground">
                             Posting as {user?.fullName || user?.username}
                           </p>
                           <Button 
@@ -1571,8 +1571,8 @@ export default function ProjectDetail() {
                         </div>
                       </form>
                     ) : (
-                      <div className="bg-gray-50 rounded-lg p-4 mb-6 text-center">
-                        <p className="text-gray-600">Please log in to post a comment.</p>
+                      <div className="bg-muted rounded-lg p-4 mb-6 text-center">
+                        <p className="text-muted-foreground">Please log in to post a comment.</p>
                       </div>
                     )}
 
@@ -1597,8 +1597,8 @@ export default function ProjectDetail() {
                         ))
                       ) : (
                         <div className="text-center py-8">
-                          <p className="text-gray-500">No comments yet.</p>
-                          <p className="text-sm text-gray-400">Be the first to share your thoughts!</p>
+                          <p className="text-muted-foreground">No comments yet.</p>
+                          <p className="text-sm text-muted-foreground/70">Be the first to share your thoughts!</p>
                         </div>
                       )}
                     </div>

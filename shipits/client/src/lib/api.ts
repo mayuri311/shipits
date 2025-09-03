@@ -1051,7 +1051,7 @@ export const notificationsApi = {
     page?: number;
     limit?: number;
     includeRead?: boolean;
-  } = {}): Promise<ApiResponse<{ 
+  } = {}): Promise<ApiResponse<{
     notifications: any[];
     pagination: {
       page: number;
@@ -1065,7 +1065,7 @@ export const notificationsApi = {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.set('page', params.page.toString());
     if (params.limit) searchParams.set('limit', params.limit.toString());
-    if (params.includeRead) searchParams.set('includeRead', params.includeRead.toString());
+    if (params.includeRead !== undefined) searchParams.set('includeRead', params.includeRead.toString());
 
     const response = await fetch(`${API_BASE}/notifications?${searchParams}`, {
       credentials: 'include',

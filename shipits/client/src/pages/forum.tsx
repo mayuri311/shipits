@@ -171,6 +171,13 @@ export default function Forum() {
   }, [searchTerm]);
 
 
+  // Check if user has any followed users
+  const { data: followingData } = useQuery({
+    queryKey: ['user-following', user?._id],
+    queryFn: () => usersApi.getFollowing(user!._id),
+    enabled: !!isAuthenticated && !!user,
+  });
+
   // Personalized feed for followed users
   const { data: feedData, isFetching: isFeedFetching } = useQuery({
     queryKey: ['feed', { page: 1, limit: 20 }],
@@ -178,6 +185,11 @@ export default function Forum() {
     enabled: !!isAuthenticated && showFollowingFeed,
   });
   const displayProjects = (showFollowingFeed && feedData?.success) ? (feedData.data.items as Project[]) : projects;
+
+  // Check if following feed is empty
+  const hasFollowing = followingData?.success && followingData.data.users && followingData.data.users.length > 0;
+  const isFollowingFeedEmpty = showFollowingFeed && hasFollowing && feedData?.success && (!feedData.data.items || feedData.data.items.length === 0);
+  const isFollowingFeedDisabled = !hasFollowing;
 
   const deleteProjectMutation = useMutation({
     mutationFn: (projectId: string) => projectsApi.adminDeleteProject(projectId),
@@ -418,8 +430,8 @@ export default function Forum() {
                   {/* Mobile/Tablet: Compact view with expandable menu */}
                   <div className="flex lg:hidden items-center gap-1">
                     <Link href="/chat">
-                      <Button variant="outline" size="sm" className="text-xs px-2">
-                        <MessageSquare className="w-3 h-3" />
+                      <Button variant="outline" size="sm" className="text-xs px-2" aria-label="Go to chat">
+                        <MessageSquare className="w-3 h-3" aria-hidden="true" />
                       </Button>
                     </Link>
                     <Link href="/create-project">
@@ -436,11 +448,13 @@ export default function Forum() {
                         </span>
                       </Button>
                     </Link>
-                    <Button 
-                      variant="outline" 
-                      size="sm" 
+                    <Button
+                      variant="outline"
+                      size="sm"
                       onClick={() => setIsMenuOpen(!isMenuOpen)}
                       className="px-2 text-xs relative"
+                      aria-label={isMenuOpen ? "Close user menu" : "Open user menu"}
+                      aria-expanded={isMenuOpen}
                     >
                       {isMenuOpen ? <X className="w-3 h-3" /> : <Menu className="w-3 h-3" />}
                       {!isMenuOpen && <span className="absolute -top-1 -right-1 w-2 h-2 bg-maroon rounded-full"></span>}
@@ -750,19 +764,43 @@ export default function Forum() {
               {/* Filters Row */}
               <div className="flex flex-col sm:flex-row gap-2 sm:gap-4">
                 {isAuthenticated && (
-                  <Button
-                    variant={showFollowingFeed ? 'default' : 'outline'}
-                    onClick={() => setShowFollowingFeed(!showFollowingFeed)}
-                    className={showFollowingFeed ? 'bg-maroon hover:bg-maroon/90 text-white' : ''}
-                  >
-                    <TranslatedText
-                      sourceType="ui"
-                      sourceId="forum-feed-toggle"
-                      field="label"
-                      text={showFollowingFeed ? t('followingFeed', 'Following Feed') : t('allProjects', 'All Projects')}
-                      as="span"
-                    />
-                  </Button>
+                  <div className="relative group">
+                    <Button
+                      variant={showFollowingFeed ? 'default' : 'outline'}
+                      onClick={() => {
+                        if (isFollowingFeedDisabled) {
+                          // Don't allow switching if no followed users
+                          return;
+                        }
+                        setShowFollowingFeed(!showFollowingFeed);
+                      }}
+                      disabled={isFollowingFeedDisabled}
+                      className={`${showFollowingFeed ? 'bg-maroon hover:bg-maroon/90 text-white' : ''} ${isFollowingFeedDisabled ? 'opacity-60' : ''}`}
+                      title={isFollowingFeedDisabled ? t('noFollowingUsers', 'You haven\'t followed any users yet') : undefined}
+                    >
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-feed-toggle"
+                        field="label"
+                        text={showFollowingFeed ? t('followingFeed', 'Following Feed') : t('allProjects', 'All Projects')}
+                        as="span"
+                      />
+                      {isFollowingFeedDisabled && (
+                        <span className="ml-1 text-xs opacity-70">🔒</span>
+                      )}
+                    </Button>
+                    {isFollowingFeedDisabled && (
+                      <div className="absolute -top-8 left-0 right-0 text-xs text-muted-foreground text-center opacity-0 group-hover:opacity-100 transition-opacity">
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-follow-users-hint"
+                          field="label"
+                          text={t('followUsersHint', 'Follow users to enable')}
+                          as="span"
+                        />
+                      </div>
+                    )}
+                  </div>
                 )}
                 <Select value={selectedCategory} onValueChange={setSelectedCategory}>
                   <SelectTrigger className="w-full sm:w-48">
@@ -940,14 +978,108 @@ export default function Forum() {
             </div>
           ) : displayProjects.length === 0 ? (
             <div className="text-center py-12">
-              <p className="text-muted-foreground text-lg mb-4">No projects found</p>
-              <p className="text-muted-foreground/70">Try adjusting your search criteria or create a new project!</p>
-              {isAuthenticated && (
-                <Link href="/create-project">
-                  <Button className="mt-4 bg-maroon hover:bg-maroon/90">
-                    Create Your First Project
-                  </Button>
-                </Link>
+              {showFollowingFeed ? (
+                isFollowingFeedDisabled ? (
+                  <>
+                    <p className="text-muted-foreground text-lg mb-4">
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-no-following"
+                        field="title"
+                        text={t('noFollowingUsersTitle', 'No Users Followed Yet')}
+                        as="span"
+                      />
+                    </p>
+                    <p className="text-muted-foreground/70 mb-4">
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-no-following-desc"
+                        field="description"
+                        text={t('noFollowingUsersDesc', 'You haven\'t followed any users yet. Follow users to see their projects in your Following Feed!')}
+                        as="span"
+                      />
+                    </p>
+                    <Link href="/profile">
+                      <Button className="bg-maroon hover:bg-maroon/90">
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-browse-users"
+                          field="label"
+                          text={t('browseUsers', 'Browse Users')}
+                          as="span"
+                        />
+                      </Button>
+                    </Link>
+                  </>
+                ) : isFollowingFeedEmpty ? (
+                  <>
+                    <p className="text-muted-foreground text-lg mb-4">
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-empty-following"
+                        field="title"
+                        text={t('emptyFollowingFeedTitle', 'No Recent Projects from Followed Users')}
+                        as="span"
+                      />
+                    </p>
+                    <p className="text-muted-foreground/70 mb-4">
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-empty-following-desc"
+                        field="description"
+                        text={t('emptyFollowingFeedDesc', 'Users you follow haven\'t posted any projects recently. Check back later or explore all projects!')}
+                        as="span"
+                      />
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => setShowFollowingFeed(false)}
+                      className="mr-2"
+                    >
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="forum-view-all"
+                        field="label"
+                        text={t('viewAllProjects', 'View All Projects')}
+                        as="span"
+                      />
+                    </Button>
+                  </>
+                ) : null
+              ) : (
+                <>
+                  <p className="text-muted-foreground text-lg mb-4">
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="forum-no-projects"
+                      field="title"
+                      text={t('noProjectsFound', 'No projects found')}
+                      as="span"
+                    />
+                  </p>
+                  <p className="text-muted-foreground/70 mb-4">
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="forum-no-projects-desc"
+                      field="description"
+                      text={t('tryAdjustingSearch', 'Try adjusting your search criteria or create a new project!')}
+                      as="span"
+                    />
+                  </p>
+                  {isAuthenticated && (
+                    <Link href="/create-project">
+                      <Button className="bg-maroon hover:bg-maroon/90">
+                        <TranslatedText
+                          sourceType="ui"
+                          sourceId="forum-create-project"
+                          field="label"
+                          text={t('createProject', 'Create Your First Project')}
+                          as="span"
+                        />
+                      </Button>
+                    </Link>
+                  )}
+                </>
               )}
             </div>
           ) : (
@@ -1030,7 +1162,7 @@ export default function Forum() {
                           <div className="mb-3">
                             {/* Collaborative Project Badge */}
                             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-2">
-                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 w-fit">
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-300 w-fit">
                                 <Users className="w-3 h-3" />
                                 Collaborative
                               </span>

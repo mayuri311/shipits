@@ -225,4 +225,80 @@ export function buildPasswordResetEmailHtml(options: {
 </html>`;
 }
 
+export function buildContactFormEmailHtml(options: {
+  name: string;
+  email: string;
+  message: string;
+  timestamp: string;
+}): string {
+  const { name, email, message, timestamp } = options;
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>New Contact Form Submission</title>
+  <style>
+    :root { --brand:#7b1e26; --dark:#0f1115; --muted:#6b7280; --card:#ffffff; --success:#10b981; }
+    body { margin:0; background:#f5f7fb; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Inter', Helvetica, Arial, sans-serif; color:#0f1115; }
+    .container { max-width:680px; margin:0 auto; padding:40px 24px; }
+    .card { background:var(--card); border-radius:16px; box-shadow: 0 10px 30px rgba(15,17,21,0.06); overflow:hidden; }
+    .header { background:linear-gradient(135deg, var(--brand), #b23b45); padding:28px 28px; color:#fff; }
+    .brand { display:flex; align-items:center; gap:12px; font-weight:700; letter-spacing:0.4px; }
+    .brand-badge { width:36px; height:36px; border-radius:8px; background:rgba(255,255,255,0.15); display:flex; align-items:center; justify-content:center; font-weight:800; }
+    .content { padding:32px 28px 8px; }
+    h1 { font-size:24px; margin:0 0 8px; letter-spacing:-0.3px; }
+    p { margin:0 0 14px; line-height:1.6; color:#1f2937; }
+    .muted { color:var(--muted); }
+    .divider { height:1px; background:#eef0f5; margin:24px 0; }
+    .message-box { background:#f8fafc; border-left:4px solid var(--brand); padding:20px 24px; border-radius:8px; margin:16px 0; }
+    .message-text { font-style: italic; color:#374151; line-height:1.6; white-space: pre-wrap; }
+    .contact-info { background:#fef7f7; border:1px solid #fecaca; border-radius:12px; padding:20px; margin:16px 0; }
+    .contact-label { font-weight:600; color:#991b1b; margin-bottom:8px; }
+    .contact-value { color:#1f2937; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas; background:#f3f4f6; padding:8px 12px; border-radius:6px; display:inline-block; }
+    .footer { padding:18px 28px 28px; color:var(--muted); font-size:12px; }
+    .priority-tag { background:#dcfce7; color:#166534; padding:4px 12px; border-radius:20px; font-size:12px; font-weight:600; margin-left:8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="header">
+        <div class="brand">
+          <div class="brand-badge">O</div>
+          <div>Osprey @ CMU</div>
+        </div>
+      </div>
+      <div class="content">
+        <h1>New Contact Form Submission<span class="priority-tag">NEW INQUIRY</span></h1>
+        <p class="muted">Someone has reached out through the contact form on your website.</p>
+
+        <div class="contact-info">
+          <div class="contact-label">From:</div>
+          <div><strong>${name}</strong></div>
+          <div class="contact-value">${email}</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <p><strong>Message:</strong></p>
+        <div class="message-box">
+          <div class="message-text">${message.replace(/\n/g, '<br>')}</div>
+        </div>
+
+        <div class="divider"></div>
+
+        <p class="muted">This message was submitted on ${timestamp}.</p>
+        <p class="muted">Please respond to the sender at <span class="contact-value">${email}</span> when you have a chance.</p>
+      </div>
+      <div class="footer">
+        <div>Sent by Osprey @ CMU Contact System</div>
+        <div>This is an automated message from your website contact form.</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+}
+
 

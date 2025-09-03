@@ -50,7 +50,7 @@ export default function NotificationBell() {
   // Get notifications when the popover opens
   const { data: notificationsData, isLoading: isLoadingNotifications } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => notificationsApi.getNotifications({ limit: 20 }),
+    queryFn: () => notificationsApi.getNotifications({ limit: 20, includeRead: true }),
     enabled: isOpen,
   });
 
@@ -162,6 +162,8 @@ export default function NotificationBell() {
           variant="ghost"
           size="sm"
           className="relative p-2 hover:bg-gray-100 transition-colors"
+          aria-label={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
+          title={`Notifications${unreadCount > 0 ? ` (${unreadCount} unread)` : ''}`}
         >
           <Bell className="h-5 w-5" />
           {unreadCount > 0 && (
@@ -177,7 +179,12 @@ export default function NotificationBell() {
       <PopoverContent className="w-80 p-0" align="end">
         <div className="p-4">
           <div className="flex items-center justify-between">
-            <h3 className="text-lg font-semibold">Notifications</h3>
+            <div>
+              <h3 className="text-lg font-semibold">Notifications</h3>
+              <p className="text-xs text-gray-500 mt-1">
+                Badge shows unread count • Showing all notifications
+              </p>
+            </div>
             {notifications.length > 0 && (
               <Button
                 variant="ghost"
@@ -250,8 +257,10 @@ export default function NotificationBell() {
                             deleteNotificationMutation.mutate(notification._id);
                           }}
                           className="p-1 h-auto text-gray-400 hover:text-gray-600"
+                          aria-label={`Delete notification: ${notification.title}`}
+                          title="Delete notification"
                         >
-                          <X className="h-3 w-3" />
+                          <X className="h-3 w-3" aria-hidden="true" />
                         </Button>
                       </div>
                       <p className="text-xs text-gray-400 mt-2">

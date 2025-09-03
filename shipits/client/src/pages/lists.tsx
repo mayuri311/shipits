@@ -273,7 +273,7 @@ export default function Lists() {
                 {list.category.replace('-', ' ')}
               </Badge>
               {list.featured && (
-                <Badge variant="default" className="ml-2 bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/20 dark:text-yellow-300 dark:border-yellow-800">
+                <Badge variant="default" className="ml-2">
                   <Star className="w-3 h-3 mr-1" />
                   Featured
                 </Badge>
@@ -354,7 +354,7 @@ export default function Lists() {
             </div>
             
             <Link href={`/lists/${list._id}`}>
-              <Button variant="ghost" size="sm" className="group-hover:bg-blue-50 group-hover:text-blue-600">
+              <Button variant="ghost" size="sm" className="group-hover:bg-accent group-hover:text-accent-foreground">
                 View <ArrowRight className="w-4 h-4 ml-1" />
               </Button>
             </Link>
@@ -617,7 +617,7 @@ export default function Lists() {
             <div className="space-y-4">
               {/* Search */}
               <div className="relative max-w-lg mx-auto md:mx-0">
-                <Search className="absolute left-3 top-3 w-4 h-4 text-gray-400" />
+                <Search className="absolute left-3 top-3 w-4 h-4 text-muted-foreground" />
                 <Input
                   placeholder={t('searchLists', 'Search lists...')}
                   value={searchQuery}
