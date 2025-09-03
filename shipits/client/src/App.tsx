@@ -23,6 +23,7 @@ import ResetPassword from "@/pages/reset-password";
 import Lists from "@/pages/lists";
 import ListDetail from "@/pages/list-detail";
 import CreateList from "@/pages/create-list";
+import AboutPage from "@/pages/about";
 import OnboardingTour from "@/components/OnboardingTour";
 
 function Router() {
@@ -43,6 +44,7 @@ function Router() {
       <Route path="/lists" component={Lists} />
       <Route path="/lists/create" component={CreateList} />
       <Route path="/lists/:id" component={ListDetail} />
+      <Route path="/about" component={AboutPage} />
       <Route component={NotFound} />
     </Switch>
   );

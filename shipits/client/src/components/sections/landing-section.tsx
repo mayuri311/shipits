@@ -69,6 +69,20 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                 </Link>
                 <button
                   className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
+                  onClick={() => onNavigate("about")}
+                  aria-label="Navigate to about page"
+                  title="About"
+                >
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="nav-about"
+                    field="label"
+                    text={t('about', 'ABOUT')}
+                    as="span"
+                  />
+                </button>
+                <button
+                  className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
                   onClick={() => onNavigate("contact")}
                   aria-label="Navigate to contact section"
                   title="Contact"
@@ -115,6 +129,19 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                     />
                   </Button>
                 </Link>
+                <button
+                  className="flex items-center justify-start px-3 py-2 text-xs text-foreground hover:text-maroon hover:bg-accent transition-colors rounded"
+                  onClick={() => { onNavigate("about"); setIsMenuOpen(false); }}
+                  aria-label="Navigate to about page (mobile menu)"
+                >
+                  <TranslatedText
+                    sourceType="ui"
+                    sourceId="mobile-nav-about"
+                    field="label"
+                    text={t('about', 'ABOUT')}
+                    as="span"
+                  />
+                </button>
                 <button
                   className="flex items-center justify-start px-3 py-2 text-xs text-foreground hover:text-maroon hover:bg-accent transition-colors rounded"
                   onClick={() => { onNavigate("contact"); setIsMenuOpen(false); }}

@@ -25,6 +25,11 @@ export default function Home() {
     })();
   }, []);
   const handleNavigate = (section: string) => {
+    if (section === 'about') {
+      window.location.href = '/about';
+      return;
+    }
+
     const element = document.getElementById(section);
     if (element) {
       element.scrollIntoView({ behavior: "smooth" });
