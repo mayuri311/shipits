@@ -474,15 +474,6 @@ export default function Forum() {
                         as="span"
                       />
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => setIsAuthModalOpen(true)}>
-                      <TranslatedText
-                        sourceType="ui"
-                        sourceId="forum-demo-login"
-                        field="label"
-                        text={t('demoLogin', 'Demo Login')}
-                        as="span"
-                      />
-                    </Button>
                   </div>
 
                   {/* Mobile/Tablet: Compact view */}
@@ -604,15 +595,6 @@ export default function Forum() {
                         Contact
                       </Button>
                     </Link>
-                    <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => { setIsAuthModalOpen(true); setIsMenuOpen(false); }}>
-                      <TranslatedText
-                        sourceType="ui"
-                        sourceId="forum-menu-demo-login"
-                        field="label"
-                        text={t('demoLogin', 'Demo Login')}
-                        as="span"
-                      />
-                    </Button>
                   </>
                 )}
               </div>

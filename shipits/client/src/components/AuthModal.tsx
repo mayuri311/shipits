@@ -136,28 +136,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
     }
   };
 
-  const handleDemoLogin = async () => {
-    setIsLoading(true);
-    try {
-      await login({
-        email: "admin@shipits.com",
-        password: "admin123"
-      });
-      toast({
-        title: "Demo Login Successful",
-        description: "You're now logged in as the demo admin user.",
-      });
-      onClose();
-    } catch (error) {
-      toast({
-        title: "Demo Login Failed",
-        description: "The demo account may not be available.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
-    }
-  };
+
 
   const handleForgotPassword = async () => {
     if (!loginData.email) {
@@ -232,29 +211,6 @@ export function AuthModal({ isOpen, onClose, defaultTab = "login" }: AuthModalPr
                 {isLoading ? "Logging in..." : "Login"}
               </Button>
             </form>
-            
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <span className="w-full border-t" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-white px-2 text-gray-500">Or</span>
-              </div>
-            </div>
-              {import.meta.env.VITE_HCAPTCHA_SITEKEY && (
-                <div>
-                  <HCaptcha sitekey={import.meta.env.VITE_HCAPTCHA_SITEKEY} onVerify={(token) => setCaptchaToken(token)} />
-                </div>
-              )}
-            
-            <Button 
-              variant="outline" 
-              className="w-full"
-              onClick={handleDemoLogin}
-              disabled={isLoading}
-            >
-              Demo Login
-            </Button>
           </TabsContent>
           
           <TabsContent value="register" className="space-y-4">
