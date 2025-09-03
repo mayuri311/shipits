@@ -81,20 +81,7 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                     as="span"
                   />
                 </button>
-                <button
-                  className="text-foreground hover:text-maroon transition-colors duration-300 font-medium tracking-wide focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-maroon focus-visible:ring-offset-2 rounded px-3 py-1"
-                  onClick={() => onNavigate("partners")}
-                  aria-label="Navigate to partners section"
-                  title="Partners"
-                >
-                  <TranslatedText
-                    sourceType="ui"
-                    sourceId="nav-partners"
-                    field="label"
-                    text={t('partnersNav', 'PARTNERS')}
-                    as="span"
-                  />
-                </button>
+
               </div>
 
               {/* Mobile: More options button */}
@@ -141,19 +128,7 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                     as="span"
                   />
                 </button>
-                <button
-                  className="flex items-center justify-start px-3 py-2 text-xs text-foreground hover:text-maroon hover:bg-accent transition-colors rounded"
-                  onClick={() => { onNavigate("partners"); setIsMenuOpen(false); }}
-                  aria-label="Navigate to partners section (mobile menu)"
-                >
-                  <TranslatedText
-                    sourceType="ui"
-                    sourceId="mobile-nav-partners"
-                    field="label"
-                    text={t('partnersNav', 'PARTNERS')}
-                    as="span"
-                  />
-                </button>
+
               </div>
             </div>
           )}

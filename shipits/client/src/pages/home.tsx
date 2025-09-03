@@ -1,10 +1,10 @@
 import { LandingSection } from "@/components/sections/landing-section";
 import { HeroSection } from "@/components/sections/hero-section";
-import { CalendarSection } from "@/components/sections/calendar-section";
+
 import { ProjectsSection } from "@/components/sections/projects-section";
 import { FAQSection } from "@/components/sections/faq-section";
 import { ContactSection } from "@/components/sections/contact-section";
-import { PartnersSection } from "@/components/sections/partners-section";
+
 import { Github, MessageSquare, Twitter, Linkedin, Award } from "lucide-react";
 import { useEffect, useState } from "react";
 import { projectsApi } from "@/lib/api";
@@ -77,11 +77,11 @@ export default function Home() {
           </div>
         </section>
       )}
-      <CalendarSection />
+
       <ProjectsSection />
       <FAQSection />
       <ContactSection />
-      <PartnersSection />
+
       
       {/* Footer */}
       <footer className="bg-black text-white py-12">

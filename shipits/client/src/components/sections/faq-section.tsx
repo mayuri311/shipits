@@ -18,11 +18,7 @@ const faqItems = [
     question: "Can I collaborate with other students?",
     answer: "Absolutely! Collaboration is at the heart of Osprey @ CMU. You can reach out to project creators through our messaging system, join existing projects that are looking for contributors, or post collaboration requests in the forum to find teammates for your ideas."
   },
-  {
-    id: 4,
-    question: "Are there any upcoming events or workshops?",
-    answer: "Yes! We regularly host hackathons, demo nights, and technical workshops. Check our calendar section above for upcoming events, or follow our announcements in the forum for the latest updates on community gatherings and learning opportunities."
-  }
+
 ];
 
 export function FAQSection() {
