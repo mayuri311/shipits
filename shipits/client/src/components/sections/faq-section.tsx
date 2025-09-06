@@ -6,17 +6,32 @@ const faqItems = [
   {
     id: 1,
     question: "What is Osprey @ CMU?",
-    answer: "Osprey @ CMU is a community platform where Carnegie Mellon students can showcase their projects, collaborate on new ideas, and connect with like-minded peers. Whether you're working on a mobile app, hardware project, or research initiative, this is your space to share and get feedback."
+    answer: "Osprey @ CMU is Carnegie Mellon's premier student innovation platform designed to foster collaboration and showcase technical excellence. Our community provides a structured environment where students can present their projects, receive constructive feedback, and connect with peers across disciplines including computer science, engineering, design, and business."
   },
   {
     id: 2,
     question: "How do I submit my project?",
-    answer: "Simply create an account using your CMU email, navigate to the forum section, and click \"Submit Project.\" You can upload images, videos, code repositories, and detailed descriptions. All submissions are reviewed to ensure quality and relevance to the community."
+    answer: "To submit your project, first register with your official CMU email address. Navigate to the Projects section and select \"Submit Project.\" You'll need to provide a comprehensive project description, technical specifications, team information, and supporting media. All submissions undergo a quality review process to ensure they meet our community standards and showcase meaningful technical work."
   },
   {
     id: 3,
     question: "Can I collaborate with other students?",
-    answer: "Absolutely! Collaboration is at the heart of Osprey @ CMU. You can reach out to project creators through our messaging system, join existing projects that are looking for contributors, or post collaboration requests in the forum to find teammates for your ideas."
+    answer: "Collaboration is fundamental to our platform's mission. You can connect with project creators through our integrated messaging system, join established teams seeking additional talent, or post project proposals to attract collaborators. We encourage interdisciplinary collaboration and provide tools to facilitate effective team communication and project management."
+  },
+  {
+    id: 4,
+    question: "What types of projects are accepted?",
+    answer: "We welcome projects from all technical disciplines, including software development, hardware prototyping, AI/ML applications, web development, mobile applications, research initiatives, and entrepreneurial ventures. Projects should demonstrate technical innovation, thoughtful design, and potential for real-world impact. Academic course projects and research are also encouraged if they showcase significant technical achievement."
+  },
+  {
+    id: 5,
+    question: "How does the feedback system work?",
+    answer: "Our peer review system allows community members to provide constructive feedback on projects. Reviews focus on technical implementation, design decisions, scalability, and potential improvements. Users can upvote helpful feedback, creating a reputation system that highlights valuable contributors to our community."
+  },
+  {
+    id: 6,
+    question: "Is Osprey @ CMU only for CMU students?",
+    answer: "While our platform is centered around the CMU community, we welcome participation from alumni and industry professionals who wish to mentor, collaborate, or share their expertise. However, project submissions and core community features are primarily designed for current CMU students to showcase their academic and extracurricular work."
   },
 
 ];

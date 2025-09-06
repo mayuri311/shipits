@@ -90,19 +90,17 @@ export default function Dashboard() {
     enabled: isAuthenticated,
   });
 
-  // Get notifications
+  // Get notifications (scoped query key to avoid conflicts with NotificationBell)
   const { data: notificationsData, isLoading: isNotificationsLoading, error: notificationsError } = useQuery({
-    queryKey: ['notifications'],
+    queryKey: ['dashboard', 'notifications'],
     queryFn: async () => {
       try {
         return await notificationsApi.getNotifications({ limit: 10, includeRead: true });
       } catch (error: any) {
-        // If it's an authentication error, trigger auth state refresh
-        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authentication required')) {
-          console.warn('Notifications auth failed, refreshing auth state');
-          // Force auth context to refresh
-          queryClient.invalidateQueries({ queryKey: ['user'] });
-          throw new Error('Please sign in to view notifications');
+        // Handle auth errors gracefully so the dashboard doesn't show a hard error
+        if (error?.message?.includes('401') || error?.message?.includes('403') || error?.message?.includes('Authentication required')) {
+          console.warn('Notifications auth issue on dashboard; returning empty list');
+          return { success: true, data: { notifications: [], pagination: { page: 1, limit: 0, total: 0, totalPages: 0, hasNextPage: false, hasPrevPage: false } } } as any;
         }
         throw error;
       }
@@ -111,7 +109,7 @@ export default function Dashboard() {
     refetchInterval: isAuthenticated ? 30000 : false, // Only refresh if authenticated
     retry: (failureCount, error: any) => {
       // Don't retry auth errors
-      if (error.message.includes('sign in') || error.message.includes('401') || error.message.includes('403')) {
+      if (error?.message?.includes('401') || error?.message?.includes('403')) {
         return false;
       }
       return failureCount < 3;
@@ -124,6 +122,7 @@ export default function Dashboard() {
     mutationFn: (id: string) => notificationsApi.markAsRead(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['notifications'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard', 'notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
     },
@@ -517,6 +516,7 @@ export default function Dashboard() {
                                 window.location.href = '/forum';
                               } else {
                                 queryClient.invalidateQueries({ queryKey: ['notifications'] });
+                                queryClient.invalidateQueries({ queryKey: ['dashboard', 'notifications'] });
                               }
                             }}
                           >
@@ -747,6 +747,7 @@ export default function Dashboard() {
                                 window.location.href = '/forum';
                               } else {
                                 queryClient.invalidateQueries({ queryKey: ['notifications'] });
+                                queryClient.invalidateQueries({ queryKey: ['dashboard', 'notifications'] });
                               }
                             }}
                           >

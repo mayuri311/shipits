@@ -6,6 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import { Button } from "@/components/ui/button";
 import { useI18n } from "@/contexts/I18nContext";
 import TranslatedText from "@/components/TranslatedText";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface LandingSectionProps {
   onNavigate: (section: string) => void;
@@ -13,6 +14,7 @@ interface LandingSectionProps {
 
 export function LandingSection({ onNavigate }: LandingSectionProps) {
   const { t } = useI18n();
+  const { isAuthenticated } = useAuth();
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const isMobile = useIsMobile();
@@ -96,6 +98,24 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                   />
                 </button>
 
+                {!isAuthenticated && (
+                  <Button
+                    size="sm"
+                    className="bg-maroon hover:bg-maroon/90 text-white"
+                    onClick={() => setIsAuthModalOpen(true)}
+                    aria-label="Open login dialog"
+                    title="Login"
+                  >
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="nav-login"
+                      field="label"
+                      text={t('loginNav', 'Login')}
+                      as="span"
+                    />
+                  </Button>
+                )}
+
               </div>
 
               {/* Mobile: More options button */}
@@ -155,6 +175,24 @@ export function LandingSection({ onNavigate }: LandingSectionProps) {
                     as="span"
                   />
                 </button>
+
+                {!isAuthenticated && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="w-full justify-start text-xs"
+                    onClick={() => { setIsAuthModalOpen(true); setIsMenuOpen(false); }}
+                    aria-label="Open login dialog"
+                  >
+                    <TranslatedText
+                      sourceType="ui"
+                      sourceId="mobile-nav-login"
+                      field="label"
+                      text={t('login', 'Login')}
+                      as="span"
+                    />
+                  </Button>
+                )}
 
               </div>
             </div>

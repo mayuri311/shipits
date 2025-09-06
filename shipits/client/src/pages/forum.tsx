@@ -23,6 +23,27 @@ import { useI18n } from "@/contexts/I18nContext";
 
 const sortOptions = ["Featured", "Most Recent", "Most Viewed", "Trending"];
 
+// Organization tag styling and icons
+const getOrgIcon = (org: string): string => {
+  switch (org) {
+    case 'Independent': return '🏃‍♂️';
+    case 'ScottyLabs': return '🤖';
+    case 'Sigma Eta Pi': return '🏛️';
+    case 'Labrador Idea-a-thon': return '🐕';
+    default: return '🏢';
+  }
+};
+
+const getOrgTagStyle = (org: string) => {
+  const styles = {
+    'Independent': 'bg-green-100 text-green-800 border border-green-200',
+    'ScottyLabs': 'bg-red-100 text-red-800 border border-red-200',
+    'Sigma Eta Pi': 'bg-purple-100 text-purple-800 border border-purple-200',
+    'Labrador Idea-a-thon': 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+  };
+  return styles[org as keyof typeof styles] || styles.Independent;
+};
+
 export default function Forum() {
   const { t } = useI18n();
   const { user, isAuthenticated, logout } = useAuth();
@@ -1216,6 +1237,21 @@ export default function Forum() {
                               >
                                 #{tag}
                               </button>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Organization Tags */}
+                        {project.organizationTags && project.organizationTags.length > 0 && (
+                          <div className="flex flex-wrap gap-1 mb-3">
+                            {project.organizationTags.map((org) => (
+                              <span
+                                key={org}
+                                className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getOrgTagStyle(org)}`}
+                              >
+                                <span>{getOrgIcon(org)}</span>
+                                {org}
+                              </span>
                             ))}
                           </div>
                         )}

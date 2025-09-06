@@ -15,6 +15,27 @@ import { compressProfileImage, formatFileSize } from "@/lib/imageCompression";
 import { ThemeSettings } from "@/components/ThemeSettings";
 import TranslatedMarkdown from "@/components/TranslatedMarkdown";
 
+// Organization tag styling and icons
+const getOrgIcon = (org: string): string => {
+  switch (org) {
+    case 'Independent': return '🏃‍♂️';
+    case 'ScottyLabs': return '🤖';
+    case 'Sigma Eta Pi': return '🏛️';
+    case 'Labrador Idea-a-thon': return '🐕';
+    default: return '🏢';
+  }
+};
+
+const getOrgTagStyle = (org: string) => {
+  const styles = {
+    'Independent': 'bg-green-100 text-green-800 border border-green-200',
+    'ScottyLabs': 'bg-red-100 text-red-800 border border-red-200',
+    'Sigma Eta Pi': 'bg-purple-100 text-purple-800 border border-purple-200',
+    'Labrador Idea-a-thon': 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+  };
+  return styles[org as keyof typeof styles] || styles.Independent;
+};
+
 export default function Profile() {
   const { user: currentUser, updateUser, isAuthenticated } = useAuth();
   const { id } = useParams();
@@ -903,6 +924,27 @@ export default function Profile() {
                                 {isMobile && project.tags.length > 3 && (
                                   <span className="px-2 py-1 bg-muted/50 text-muted-foreground/70 rounded-full text-xs">
                                     +{project.tags.length - 3}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
+                            {/* Organization Tags */}
+                            {project.organizationTags && project.organizationTags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 sm:gap-2 mb-3">
+                                {project.organizationTags.slice(0, isMobile ? 2 : 4).map((org) => (
+                                  <span
+                                    key={org}
+                                    className={`px-2 py-1 rounded-full text-xs font-medium flex items-center gap-1 ${getOrgTagStyle(org)}`}
+                                  >
+                                    <span className="text-xs">{getOrgIcon(org)}</span>
+                                    <span className="hidden sm:inline">{org}</span>
+                                    <span className="sm:hidden">{org.split(' ')[0]}</span>
+                                  </span>
+                                ))}
+                                {isMobile && project.organizationTags.length > 2 && (
+                                  <span className="px-2 py-1 bg-muted/50 text-muted-foreground/70 rounded-full text-xs">
+                                    +{project.organizationTags.length - 2}
                                   </span>
                                 )}
                               </div>

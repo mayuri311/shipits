@@ -16,6 +16,43 @@ import { useToast } from "@/hooks/use-toast";
 import type { CreateProject as CreateProjectType } from "@shared/schema";
 import { useMutation, useQueryClient, useQuery } from "@tanstack/react-query";
 
+// Organization tag styling and icons
+const getOrgIcon = (org: string): string => {
+  switch (org) {
+    case 'Independent': return '🏃‍♂️';
+    case 'ScottyLabs': return '🤖';
+    case 'Sigma Eta Pi': return '🏛️';
+    case 'Labrador Idea-a-thon': return '🐕';
+    default: return '🏢';
+  }
+};
+
+const getOrgTagStyle = (org: string) => {
+  const styles = {
+    'Independent': {
+      selected: 'border-green-500 bg-green-50 text-green-700',
+      unselected: 'border-green-200 bg-white hover:bg-green-50 text-green-600 hover:border-green-300',
+      badge: 'bg-green-100 text-green-800 border border-green-200'
+    },
+    'ScottyLabs': {
+      selected: 'border-red-500 bg-red-50 text-red-700',
+      unselected: 'border-red-200 bg-white hover:bg-red-50 text-red-600 hover:border-red-300',
+      badge: 'bg-red-100 text-red-800 border border-red-200'
+    },
+    'Sigma Eta Pi': {
+      selected: 'border-purple-500 bg-purple-50 text-purple-700',
+      unselected: 'border-purple-200 bg-white hover:bg-purple-50 text-purple-600 hover:border-purple-300',
+      badge: 'bg-purple-100 text-purple-800 border border-purple-200'
+    },
+    'Labrador Idea-a-thon': {
+      selected: 'border-yellow-500 bg-yellow-50 text-yellow-700',
+      unselected: 'border-yellow-200 bg-white hover:bg-yellow-50 text-yellow-600 hover:border-yellow-300',
+      badge: 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+    }
+  };
+  return styles[org as keyof typeof styles] || styles.Independent;
+};
+
 export default function CreateProject() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading } = useRequireAuth();
@@ -42,6 +79,7 @@ export default function CreateProject() {
     title: "",
     description: "",
     tags: [],
+    organizationTags: [],
     status: "active",
     media: [],
   });
@@ -242,9 +280,24 @@ export default function CreateProject() {
         credentials: 'include',
         body: JSON.stringify({ title: projectData.title, description: projectData.description, intent })
       });
+      
+      if (!r.ok) {
+        throw new Error(`Server error: ${r.status} ${r.statusText}`);
+      }
+      
+      const contentType = r.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        throw new Error('Server returned non-JSON response');
+      }
+      
       const j = await r.json();
-      if (j.success) setImprovedDesc(j.data.improved);
+      if (j.success) {
+        setImprovedDesc(j.data.improved);
+      } else {
+        throw new Error(j.error || 'Failed to improve description');
+      }
     } catch (e: any) {
+      console.error('AI description improvement error:', e);
       toast({ title: 'Error', description: e.message || 'Failed to improve description', variant: 'destructive' });
     } finally {
       setImprovingDesc(false);
@@ -277,6 +330,7 @@ export default function CreateProject() {
           title: "",
           description: "",
           tags: [],
+          organizationTags: [],
           status: "active",
           media: [],
         });
@@ -565,6 +619,77 @@ export default function CreateProject() {
                     </div>
                   </div>
                 )}
+
+                {/* Organization Tags Section */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    Student Organizations & Initiatives
+                  </label>
+                  <p className="text-xs text-gray-500 mb-3">
+                    Associate your project with student organizations or initiatives (optional)
+                  </p>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {['Independent', 'ScottyLabs', 'Sigma Eta Pi', 'Labrador Idea-a-thon'].map((org) => (
+                      <button
+                        key={org}
+                        type="button"
+                        onClick={() => {
+                          const isSelected = projectData.organizationTags.includes(org as any);
+                          if (isSelected) {
+                            setProjectData(prev => ({
+                              ...prev,
+                              organizationTags: prev.organizationTags.filter(tag => tag !== org)
+                            }));
+                          } else {
+                            setProjectData(prev => ({
+                              ...prev,
+                              organizationTags: [...prev.organizationTags, org as any]
+                            }));
+                          }
+                        }}
+                        className={`p-3 rounded-lg border-2 transition-all text-sm font-medium ${
+                          projectData.organizationTags.includes(org as any)
+                            ? getOrgTagStyle(org).selected
+                            : getOrgTagStyle(org).unselected
+                        }`}
+                      >
+                        <div className="flex flex-col items-center gap-1">
+                          <span className="text-lg">{getOrgIcon(org)}</span>
+                          <span className="text-xs leading-tight text-center">{org}</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+
+                  {projectData.organizationTags.length > 0 && (
+                    <div className="mt-3">
+                      <label className="block text-sm font-medium text-gray-700 mb-2">
+                        Selected Organizations
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {projectData.organizationTags.map((org, index) => (
+                          <span
+                            key={index}
+                            className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-2 ${getOrgTagStyle(org).badge}`}
+                          >
+                            <span>{getOrgIcon(org)}</span>
+                            {org}
+                            <button
+                              type="button"
+                              onClick={() => setProjectData(prev => ({
+                                ...prev,
+                                organizationTags: prev.organizationTags.filter(tag => tag !== org)
+                              }))}
+                              className="hover:opacity-70"
+                            >
+                              <X className="w-3 h-3" />
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 

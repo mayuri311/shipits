@@ -259,6 +259,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       
+      // Validate .edu email restriction for new registrations
+      if (!email.endsWith('.edu')) {
+        return res.status(400).json({
+          success: false,
+          error: 'Registration is restricted to .edu email addresses'
+        });
+      }
+      
       // Check if user already exists
       const existingUser = await mongoStorage.getUserByEmail(email);
       if (existingUser) {
@@ -2382,6 +2390,77 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // AI: Improve/Shorten Project Description (for draft projects)
+  app.post('/api/ai/description/improve', requireAuth, async (req, res) => {
+    try {
+      console.log('AI Description Improve - Request received:', {
+        body: req.body,
+        headers: req.headers['content-type']
+      });
+
+      let azureOpenAIService;
+      try {
+        const azureModule = await import('./services/azureOpenAI');
+        azureOpenAIService = azureModule.azureOpenAIService;
+      } catch (importError) {
+        console.error('Failed to import Azure OpenAI modules:', importError);
+        res.set('Content-Type', 'application/json');
+        return res.status(503).json({ success: false, error: 'AI service unavailable' });
+      }
+
+      if (!azureOpenAIService || !azureOpenAIService.isConfigured()) {
+        res.set('Content-Type', 'application/json');
+        return res.status(503).json({ success: false, error: 'AI service not configured' });
+      }
+
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
+      if (!currentUser) {
+        res.set('Content-Type', 'application/json');
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const { title, description, intent = 'improve', maxWords } = req.body || {};
+      
+      if (!description || !description.trim()) {
+        res.set('Content-Type', 'application/json');
+        return res.status(400).json({ success: false, error: 'Description is required' });
+      }
+
+      console.log('AI Description Improve - Calling Azure OpenAI with:', {
+        title: title || '',
+        description: description.substring(0, 100) + '...',
+        intent,
+        maxWords
+      });
+
+      const result = await azureOpenAIService.improveDescription({
+        title: title || '',
+        description,
+        intent,
+        maxWords,
+      });
+
+      console.log('AI Description Improve - Azure OpenAI response:', {
+        hasImproved: !!result.improved,
+        improvedLength: result.improved?.length || 0,
+        suggestionsCount: result.suggestions?.length || 0
+      });
+
+      res.set('Content-Type', 'application/json');
+      const response = { success: true, data: result };
+      console.log('AI Description Improve - Sending response:', response);
+      res.json(response);
+    } catch (error: any) {
+      console.error('Improve description error:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      res.set('Content-Type', 'application/json');
+      res.status(500).json({ success: false, error: 'Failed to improve description' });
+    }
+  });
+
   // AI: UI personalization (theme/layout suggestion)
   app.post('/api/ai/personalize-ui', requireAuth, async (req, res) => {
     try {
@@ -2396,6 +2475,75 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (e: any) {
       console.error('AI personalize error:', e);
       res.status(200).json({ success: true, data: { preset: 'default', accentColor: 'blue', mode: 'system', layout: 'standard' } });
+    }
+  });
+
+  // AI: Suggest tags for project content
+  app.post('/api/ai/tags/suggest', requireAuth, async (req, res) => {
+    try {
+      console.log('AI Tags Suggest - Request received:', {
+        body: req.body,
+        headers: req.headers['content-type']
+      });
+
+      let azureOpenAIService;
+      try {
+        const azureModule = await import('./services/azureOpenAI');
+        azureOpenAIService = azureModule.azureOpenAIService;
+      } catch (importError) {
+        console.error('Failed to import Azure OpenAI modules:', importError);
+        res.set('Content-Type', 'application/json');
+        return res.status(503).json({ success: false, error: 'AI service unavailable' });
+      }
+
+      if (!azureOpenAIService || !azureOpenAIService.isConfigured()) {
+        res.set('Content-Type', 'application/json');
+        return res.status(503).json({ success: false, error: 'AI service not configured' });
+      }
+
+      const currentUser = await mongoStorage.getUser(req.session.userId!!);
+      if (!currentUser) {
+        res.set('Content-Type', 'application/json');
+        return res.status(401).json({ success: false, error: 'User not found' });
+      }
+
+      const { title, description, existingTags, maxTags } = req.body || {};
+      
+      if (!title || !description) {
+        res.set('Content-Type', 'application/json');
+        return res.status(400).json({ success: false, error: 'Title and description are required' });
+      }
+
+      console.log('AI Tags Suggest - Calling Azure OpenAI with:', {
+        title: title.substring(0, 50) + '...',
+        description: description.substring(0, 100) + '...',
+        existingTagsCount: existingTags?.length || 0,
+        maxTags
+      });
+
+      const suggestions = await azureOpenAIService.suggestTags({
+        title,
+        description,
+        existingTags: existingTags || [],
+        maxTags: maxTags || 5
+      });
+
+      console.log('AI Tags Suggest - Azure OpenAI response:', {
+        suggestionsCount: suggestions?.length || 0
+      });
+
+      res.set('Content-Type', 'application/json');
+      const response = { success: true, data: { suggestions } };
+      console.log('AI Tags Suggest - Sending response:', response);
+      res.json(response);
+    } catch (error: any) {
+      console.error('Suggest tags error:', {
+        message: error.message,
+        stack: error.stack,
+        name: error.name
+      });
+      res.set('Content-Type', 'application/json');
+      res.status(500).json({ success: false, error: 'Failed to suggest tags' });
     }
   });
 
@@ -4952,6 +5100,7 @@ Please provide a helpful, data-driven response based on the available statistics
     try {
       const listData = {
         ...req.body,
+        isPublic: true,
         createdBy: new Types.ObjectId(req.session.userId!),
         analytics: {
           views: 0,
@@ -5008,7 +5157,7 @@ Please provide a helpful, data-driven response based on the available statistics
       
       const updatedList = await List.findByIdAndUpdate(
         id,
-        { ...req.body, 'analytics.lastActivity': new Date() },
+        { ...req.body, isPublic: true, 'analytics.lastActivity': new Date() },
         { new: true, runValidators: true }
       ).populate('createdBy', 'username fullName profileImage');
       

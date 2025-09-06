@@ -118,6 +118,7 @@ export const projectSchema = z.object({
   status: z.enum(['active', 'inactive', 'archived', 'completed']).default('active'),
   description: z.string().min(1).max(2000),
   tags: z.array(z.string().max(50)),
+  organizationTags: z.array(z.enum(['Independent', 'ScottyLabs', 'Sigma Eta Pi', 'Labrador Idea-a-thon'])).default([]),
   aiSummary: z.string().max(1200).optional(),
   aiSummaryUpdatedAt: z.date().optional(),
   aiSuggestedTags: z.array(z.string().max(50)).optional(),
@@ -352,7 +353,10 @@ export const loginSchema = z.object({
 
 export const registerSchema = z.object({
   username: z.string().min(3, 'Username must be at least 3 characters').max(30),
-  email: z.string().email('Invalid email address'),
+  email: z.string().email('Invalid email address').refine(
+    (email) => email.endsWith('.edu'),
+    'Email address must end with .edu'
+  ),
   password: z.string().min(6, 'Password must be at least 6 characters'),
   fullName: z.string().min(1, 'Full name is required').max(100),
   college: z.enum([
@@ -428,6 +432,7 @@ export const createProjectSchema = z.object({
   title: z.string().min(1).max(200),
   description: z.string().min(1).max(2000),
   tags: z.array(z.string().max(50)),
+  organizationTags: z.array(z.enum(['Independent', 'ScottyLabs', 'Sigma Eta Pi', 'Labrador Idea-a-thon'])).default([]),
   status: z.enum(['active', 'inactive', 'archived', 'completed']).default('active'),
   media: z.array(z.object({
     type: z.enum(['image', 'video', 'document', 'archive', 'other']),
@@ -704,7 +709,6 @@ export const createListSchema = z.object({
     'software', 'hardware', 'design', 'marketing', 'other'
   ]),
   tags: z.array(z.string().max(50)).default([]),
-  isPublic: z.boolean().default(true),
   settings: z.object({
     allowAnonymousContributions: z.boolean().default(true),
     requireApprovalForNewItems: z.boolean().default(false),
@@ -758,7 +762,8 @@ export const updateListSchema = listSchema.partial().omit({
   _id: true,
   createdAt: true,
   updatedAt: true,
-  createdBy: true
+  createdBy: true,
+  isPublic: true
 });
 
 export const updateListItemSchema = listItemSchema.partial().omit({

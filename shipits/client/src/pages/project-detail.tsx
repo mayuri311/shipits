@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/contexts/AuthContext";
-import { projectsApi, commentsApi, reportsApi } from "@/lib/api";
+import { projectsApi, commentsApi, reportsApi, tagsApi } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { CommentThread } from "@/components/CommentThread";
@@ -38,6 +38,27 @@ const isValidUpdate = (update: any) => {
     !update.title.toLowerCase().includes('placeholder') &&
     !update.title.toLowerCase().includes('sample') &&
     !update.title.toLowerCase().includes('test update');
+};
+
+// Organization tag styling and icons
+const getOrgIcon = (org: string): string => {
+  switch (org) {
+    case 'Independent': return '🏃‍♂️';
+    case 'ScottyLabs': return '🤖';
+    case 'Sigma Eta Pi': return '🏛️';
+    case 'Labrador Idea-a-thon': return '🐕';
+    default: return '🏢';
+  }
+};
+
+const getOrgTagStyle = (org: string) => {
+  const styles = {
+    'Independent': 'bg-green-100 text-green-800 border border-green-200',
+    'ScottyLabs': 'bg-red-100 text-red-800 border border-red-200',
+    'Sigma Eta Pi': 'bg-purple-100 text-purple-800 border border-purple-200',
+    'Labrador Idea-a-thon': 'bg-yellow-100 text-yellow-800 border border-yellow-200'
+  };
+  return styles[org as keyof typeof styles] || styles.Independent;
 };
 
 export default function ProjectDetail() {
@@ -681,6 +702,33 @@ export default function ProjectDetail() {
     }
   };
 
+  const handleSuggestTags = async () => {
+    if (!projectEditForm.title.trim() || !projectEditForm.description.trim()) {
+      toast({ title: 'Enter title & description first', variant: 'destructive' });
+      return;
+    }
+    setSuggestingTags(true);
+    try {
+      const resp = await tagsApi.suggestForDraft({ 
+        title: projectEditForm.title, 
+        description: projectEditForm.description, 
+        existingTags: projectEditForm.tags 
+      });
+      if (resp.success) setAiTagSuggestions(resp.data.suggestions || []);
+    } catch (e: any) {
+      toast({ title: 'Error', description: e.message || 'Failed to suggest tags', variant: 'destructive' });
+    } finally {
+      setSuggestingTags(false);
+    }
+  };
+
+  const addSuggestedTag = (tag: string) => {
+    setProjectEditForm(prev => ({ 
+      ...prev, 
+      tags: Array.from(new Set([...prev.tags, tag])) 
+    }));
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
@@ -1231,12 +1279,32 @@ export default function ProjectDetail() {
                           </div>
                         </div>
                       ) : (
-                        <TranslatedMarkdown
-                          sourceType="project"
-                          sourceId={project._id}
-                          field="description"
-                          text={project.description}
-                        />
+                        <>
+                          {/* Organization Tags - Above Description */}
+                          {project.organizationTags && project.organizationTags.length > 0 && (
+                            <div className="mb-6">
+                              <h4 className="text-md font-semibold mb-3 text-foreground">Student Organizations</h4>
+                              <div className="flex flex-wrap gap-2">
+                                {project.organizationTags.map((org, index) => (
+                                  <span
+                                    key={index}
+                                    className={`px-3 py-1 rounded-full text-sm font-medium flex items-center gap-1 ${getOrgTagStyle(org)}`}
+                                  >
+                                    <span>{getOrgIcon(org)}</span>
+                                    {org}
+                                  </span>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          <TranslatedMarkdown
+                            sourceType="project"
+                            sourceId={project._id}
+                            field="description"
+                            text={project.description}
+                          />
+                        </>
                       )}
                       
                       {project.tags && project.tags.length > 0 && (

@@ -45,6 +45,7 @@ export interface IProject extends Document {
   status: 'active' | 'inactive' | 'archived' | 'completed';
   description: string;
   tags: string[];
+  organizationTags: ('Independent' | 'ScottyLabs' | 'Sigma Eta Pi' | 'Labrador Idea-a-thon')[];
   aiSummary?: string; // Optional AI-generated summary
   aiSummaryUpdatedAt?: Date;
   aiSuggestedTags?: string[];
@@ -229,6 +230,11 @@ const ProjectSchema = new Schema<IProject>({
     trim: true,
     lowercase: true,
     maxlength: 50
+  }],
+  organizationTags: [{
+    type: String,
+    enum: ['Independent', 'ScottyLabs', 'Sigma Eta Pi', 'Labrador Idea-a-thon'],
+    trim: true
   }],
   aiSummary: {
     type: String,

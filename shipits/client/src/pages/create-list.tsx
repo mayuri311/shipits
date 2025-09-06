@@ -7,7 +7,6 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
-import { Switch } from '@/components/ui/switch';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
@@ -16,7 +15,6 @@ import {
   Plus, 
   X,
   Globe,
-  Lock,
   Users,
   Settings,
   Info,
@@ -64,7 +62,6 @@ export default function CreateList() {
     description: '',
     category: '',
     tags: [] as string[],
-    isPublic: true,
     settings: {
       allowAnonymousContributions: true,
       requireApprovalForNewItems: false,
@@ -197,6 +194,7 @@ export default function CreateList() {
     
     const listData = {
       ...formData,
+      isPublic: true,
       settings: {
         ...formData.settings,
         maxItemsPerUser: formData.settings.maxItemsPerUser > 0 ? formData.settings.maxItemsPerUser : undefined
@@ -518,21 +516,13 @@ export default function CreateList() {
                 <div className="flex items-center justify-between">
                   <div className="space-y-1">
                     <div className="flex items-center gap-2">
-                      {formData.isPublic ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
-                      <Label htmlFor="isPublic">Public List</Label>
+                      <Globe className="w-4 h-4" />
+                      <Label>Public List</Label>
                     </div>
                     <p className="text-sm text-gray-500">
-                      {formData.isPublic 
-                        ? 'Anyone can view and discover this list'
-                        : 'Only you and invited collaborators can see this list'
-                      }
+                      All lists are public and can be viewed and discovered by anyone
                     </p>
                   </div>
-                  <Switch
-                    id="isPublic"
-                    checked={formData.isPublic}
-                    onCheckedChange={(checked) => setFormData({ ...formData, isPublic: checked })}
-                  />
                 </div>
 
                 <Separator />
