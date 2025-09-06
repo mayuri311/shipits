@@ -685,7 +685,7 @@ export default function ListDetail() {
                       <Star
                         key={i}
                         className={cn('w-3 h-3',
-                          i < item.metadata.rating! ? 'text-yellow-400 fill-current' : 'text-muted-foreground'
+                          i < item.metadata.rating! ? 'text-yellow-400 fill-current' : 'text-foreground/40'
                         )}
                       />
                     ))}
@@ -718,7 +718,7 @@ export default function ListDetail() {
               </CardTitle>
 
               {item.metadata.description && (
-                <CardDescription className="text-sm text-muted-foreground mb-3">
+                <CardDescription className="text-sm text-foreground/70 mb-3">
                   {item.metadata.description}
                 </CardDescription>
               )}
@@ -771,7 +771,7 @@ export default function ListDetail() {
             <MarkdownRenderer content={item.content} />
           </div>
           
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
+          <div className="flex items-center justify-between text-sm text-foreground/60 mb-4">
             <div className="flex items-center gap-2">
               <Avatar className="w-5 h-5">
                 <AvatarImage src={item.createdBy.profileImage} />
@@ -781,7 +781,7 @@ export default function ListDetail() {
               </Avatar>
               <span>{item.createdBy.fullName || item.createdBy.username}</span>
               {item.lastEditedBy && item.lastEditedBy._id !== item.createdBy._id && (
-                <span className="text-muted-foreground/70">
+                <span className="text-foreground/60">
                   · edited by {item.lastEditedBy.fullName || item.lastEditedBy.username}
                 </span>
               )}
@@ -835,7 +835,7 @@ export default function ListDetail() {
                 </Button>
               </div>
               
-              <div className="flex items-center gap-1 text-xs text-muted-foreground/70">
+              <div className="flex items-center gap-1 text-xs text-foreground/60">
                 <Eye className="w-3 h-3" />
                 {item.analytics.views}
                 {item.metadata.url && (
@@ -858,7 +858,7 @@ export default function ListDetail() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-muted-foreground">Loading list...</p>
+          <p className="text-foreground/70">Loading list...</p>
         </div>
       </div>
     );
@@ -869,7 +869,7 @@ export default function ListDetail() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-foreground mb-2">List not found</h2>
-          <p className="text-muted-foreground mb-4">The list you're looking for doesn't exist or has been deleted.</p>
+          <p className="text-foreground/70 mb-4">The list you're looking for doesn't exist or has been deleted.</p>
           <Link href="/lists">
             <Button>
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -987,10 +987,10 @@ export default function ListDetail() {
         <div className="container mx-auto px-4 max-w-6xl">
           {/* Breadcrumb */}
           <div className="flex items-center gap-2 mb-6">
-            <Link href="/lists" className="text-sm text-muted-foreground hover:text-blue-600">
+            <Link href="/lists" className="text-sm text-foreground/70 hover:text-blue-600">
               Lists
             </Link>
-            <span className="text-muted-foreground/50">/</span>
+            <span className="text-foreground/40">/</span>
             <span className="text-sm font-medium text-foreground">{list.title}</span>
           </div>
 
@@ -1007,14 +1007,14 @@ export default function ListDetail() {
                     Featured
                   </Badge>
                 )}
-                <div className="flex items-center gap-1 text-xs md:text-sm text-muted-foreground">
+                <div className="flex items-center gap-1 text-xs md:text-sm text-foreground/60">
                   {list.isPublic ? <Globe className="w-4 h-4" /> : <Lock className="w-4 h-4" />}
                   {list.isPublic ? 'Public' : 'Private'}
                 </div>
               </div>
 
               <h1 className="text-xl md:text-3xl font-bold text-foreground">{list.title}</h1>
-              <p className="text-muted-foreground text-sm md:text-lg">{list.description}</p>
+              <p className="text-foreground/80 text-sm md:text-lg">{list.description}</p>
               
               <div className="flex flex-wrap gap-2">
                 {list.tags.map((tag) => (
@@ -1028,7 +1028,7 @@ export default function ListDetail() {
             {/* Stats and Creator Info - Mobile Responsive */}
             <div className="mt-6 space-y-4 md:space-y-0 md:flex md:items-center md:justify-between">
               {/* Stats */}
-              <div className="grid grid-cols-2 md:flex md:items-center gap-3 md:gap-6 text-xs md:text-sm text-muted-foreground">
+              <div className="grid grid-cols-2 md:flex md:items-center gap-3 md:gap-6 text-xs md:text-sm text-foreground/60">
                 <div className="flex items-center gap-1">
                   <Eye className="w-4 h-4" />
                   <span>{list.analytics.views} views</span>
@@ -1061,7 +1061,7 @@ export default function ListDetail() {
                     {list.createdBy.fullName || list.createdBy.username}
                   </p>
                   {list.createdBy.college && (
-                    <p className="text-muted-foreground text-xs">
+                    <p className="text-foreground/60 text-xs">
                       {list.createdBy.college}
                       {list.createdBy.graduationYear && ` '${list.createdBy.graduationYear.toString().slice(-2)}`}
                     </p>
@@ -1122,7 +1122,7 @@ export default function ListDetail() {
 
           {/* Live Viewer Count */}
           {viewerCount > 1 && (
-            <div className="mb-4 flex items-center gap-2 text-sm text-muted-foreground">
+            <div className="mb-4 flex items-center gap-2 text-sm text-foreground/60">
               <Users className="w-4 h-4 text-green-500" />
               <span className="text-green-600 font-medium">{viewerCount} people</span>
               <span>viewing this list</span>
@@ -1133,8 +1133,8 @@ export default function ListDetail() {
           {realtimeItems.length === 0 ? (
             <div className="text-center py-12">
               <ListIcon className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold text-muted-foreground mb-2">No items yet</h3>
-              <p className="text-muted-foreground mb-6">Be the first to contribute to this list!</p>
+              <h3 className="text-xl font-semibold text-foreground/80 mb-2">No items yet</h3>
+              <p className="text-foreground/70 mb-6">Be the first to contribute to this list!</p>
               {isAuthenticated && canContribute() && (
                 <Button onClick={() => setIsAddingItem(true)}>
                   <Plus className="w-4 h-4 mr-2" />
@@ -1224,7 +1224,7 @@ export default function ListDetail() {
                     onChange={(e) => setNewItem({ ...newItem, content: e.target.value })}
                     rows={6}
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Supports markdown formatting</p>
+                  <p className="text-xs text-foreground/60 mt-1">Supports markdown formatting</p>
                 </div>
                 
                 <div className="flex justify-end gap-2">
@@ -1299,7 +1299,7 @@ export default function ListDetail() {
                     onChange={(e) => setEditItem({ ...editItem, content: e.target.value })}
                     rows={6}
                   />
-                  <p className="text-xs text-muted-foreground mt-1">Supports markdown formatting</p>
+                  <p className="text-xs text-foreground/60 mt-1">Supports markdown formatting</p>
                 </div>
 
                 <div className="flex justify-end gap-2">
@@ -1328,7 +1328,7 @@ export default function ListDetail() {
                 <div className="space-y-4">
                   <div className="p-3 bg-muted rounded-lg">
                     <p className="text-sm font-medium text-foreground">{reportingItem.title}</p>
-                    <p className="text-xs text-muted-foreground mt-1">
+                    <p className="text-xs text-foreground/60 mt-1">
                       by {reportingItem.createdBy.fullName || reportingItem.createdBy.username}
                     </p>
                   </div>

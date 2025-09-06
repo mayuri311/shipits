@@ -4935,6 +4935,7 @@ Please provide a helpful, data-driven response based on the available statistics
       // Sort options
       let sort: any = { featured: -1, 'analytics.lastActivity': -1 };
       if (req.query.sortBy === 'newest') sort = { createdAt: -1 };
+      if (req.query.sortBy === 'updated') sort = { updatedAt: -1 };
       if (req.query.sortBy === 'popular') sort = { 'analytics.views': -1 };
       if (req.query.sortBy === 'items') sort = { 'analytics.totalItems': -1 };
       

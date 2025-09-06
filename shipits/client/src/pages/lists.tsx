@@ -205,7 +205,7 @@ export default function Lists() {
   const { user, isAuthenticated } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
-  const [sortBy, setSortBy] = useState<string>('trending');
+  const [sortBy, setSortBy] = useState<string>('updated');
   const [page, setPage] = useState(1);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -294,7 +294,7 @@ export default function Lists() {
             </Link>
           </CardTitle>
 
-          <CardDescription className="text-sm text-muted-foreground line-clamp-2">
+          <CardDescription className="text-sm text-foreground/70 line-clamp-2">
             <TranslatedText
               sourceType="list"
               sourceId={list._id}
@@ -319,7 +319,7 @@ export default function Lists() {
             )}
           </div>
           
-          <div className="flex items-center justify-between text-sm text-muted-foreground mb-4">
+          <div className="flex items-center justify-between text-sm text-foreground/60 mb-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-1">
                 <Eye className="w-4 h-4" />
@@ -546,7 +546,7 @@ export default function Lists() {
                 />
               </h1>
             </div>
-            <p className="text-sm sm:text-lg lg:text-xl text-muted-foreground max-w-3xl mx-auto mb-6 md:mb-8 px-4">
+            <p className="text-sm sm:text-lg lg:text-xl text-foreground/80 max-w-3xl mx-auto mb-6 md:mb-8 px-4">
               <TranslatedText
                 sourceType="ui"
                 sourceId="lists-hero-description"
@@ -676,6 +676,15 @@ export default function Lists() {
                     <SelectValue placeholder={t('sortByFilter', 'Sort by')} />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="updated">
+                      <TranslatedText
+                        sourceType="ui"
+                        sourceId="lists-sort-updated"
+                        field="label"
+                        text={t('mostRecentlyUpdated', 'Most Recently Updated')}
+                        as="span"
+                      />
+                    </SelectItem>
                     <SelectItem value="trending">
                       <TranslatedText
                         sourceType="ui"
@@ -737,13 +746,13 @@ export default function Lists() {
               </div>
             ) : error ? (
               <div className="text-center py-12">
-                <p className="text-muted-foreground">Failed to load lists. Please try again.</p>
+                <p className="text-foreground/70">Failed to load lists. Please try again.</p>
               </div>
             ) : listsData?.lists.length === 0 ? (
               <div className="text-center py-12">
                 <ListIcon className="w-16 h-16 text-muted-foreground/30 mx-auto mb-4" />
-                <h3 className="text-xl font-semibold text-muted-foreground mb-2">No lists found</h3>
-                <p className="text-muted-foreground mb-6">Try adjusting your search or filters, or create the first list!</p>
+                <h3 className="text-xl font-semibold text-foreground/80 mb-2">No lists found</h3>
+                <p className="text-foreground/70 mb-6">Try adjusting your search or filters, or create the first list!</p>
                 {isAuthenticated && (
                   <Link href="/lists/create">
                     <Button>

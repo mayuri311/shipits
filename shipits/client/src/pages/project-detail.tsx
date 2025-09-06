@@ -734,7 +734,7 @@ export default function ProjectDetail() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-maroon mx-auto"></div>
-          <p className="mt-4 text-muted-foreground">Loading project...</p>
+          <p className="mt-4 text-foreground/70">Loading project...</p>
         </div>
       </div>
     );
@@ -745,7 +745,7 @@ export default function ProjectDetail() {
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <h2 className="text-2xl font-bold text-foreground mb-4">Project Not Found</h2>
-          <p className="text-muted-foreground mb-6">{error || "The project you're looking for doesn't exist."}</p>
+          <p className="text-foreground/70 mb-6">{error || "The project you're looking for doesn't exist."}</p>
           <Link href="/forum">
             <Button>Back to Forum</Button>
           </Link>
@@ -908,14 +908,14 @@ export default function ProjectDetail() {
                             </div>
                           )}
                         </div>
-                        <p className="text-xs sm:text-sm text-muted-foreground">
+                        <p className="text-xs sm:text-sm text-foreground/60">
                           By {project.ownerId?.fullName || project.ownerId?.username}
                         </p>
                         
                         {/* Collaborators Display */}
                         {project.collaborators && project.collaborators.length > 0 && (
                           <div className="flex items-center gap-2 mt-3 flex-wrap">
-                            <span className="text-xs text-muted-foreground">Collaborators:</span>
+                            <span className="text-xs text-foreground/60">Collaborators:</span>
                             <div className="flex items-center -space-x-2">
                               {project.collaborators.slice(0, 5).map((collaborator: User) => (
                                 <Avatar key={collaborator._id} className="w-6 h-6 border-2 border-background">
@@ -930,11 +930,11 @@ export default function ProjectDetail() {
                               ))}
                               {project.collaborators.length > 5 && (
                                 <div className="w-6 h-6 rounded-full bg-muted border-2 border-background flex items-center justify-center">
-                                  <span className="text-xs text-muted-foreground">+{project.collaborators.length - 5}</span>
+                                  <span className="text-xs text-foreground/60">+{project.collaborators.length - 5}</span>
                                 </div>
                               )}
                             </div>
-                            <div className="flex flex-wrap gap-1 text-xs text-muted-foreground max-w-xs">
+                            <div className="flex flex-wrap gap-1 text-xs text-foreground/60 max-w-xs">
                               {project.collaborators.slice(0, 3).map((collaborator: User, index: number) => (
                                 <span key={collaborator._id}>
                                   {collaborator.fullName || collaborator.username}
@@ -1065,7 +1065,7 @@ export default function ProjectDetail() {
                           onClick={handleLike}
                           disabled={liking}
                           className={`flex items-center gap-2 transition-colors hover:text-red-500 ${
-                            isLiked ? 'text-red-500' : 'text-muted-foreground'
+                            isLiked ? 'text-red-500' : 'text-foreground/40'
                           } ${liking ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
                           aria-label={isLiked ? 
                             `Unlike project (${project.analytics?.totalLikes || 0} likes)` : 
@@ -1077,21 +1077,21 @@ export default function ProjectDetail() {
                         </button>
                       </dd>
                     </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex items-center gap-2 text-foreground/60">
                       <dt className="sr-only">Comments count</dt>
                       <dd className="flex items-center gap-2">
                         <MessageSquare className="w-5 h-5" aria-hidden="true" />
                         <span>{project.analytics?.totalComments || 0} comments</span>
                       </dd>
                     </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex items-center gap-2 text-foreground/60">
                       <dt className="sr-only">Views count</dt>
                       <dd className="flex items-center gap-2">
                         <Eye className="w-5 h-5" aria-hidden="true" />
                         <span>{project.analytics?.views || 0} views</span>
                       </dd>
                     </div>
-                    <div className="flex items-center gap-2 text-muted-foreground">
+                    <div className="flex items-center gap-2 text-foreground/60">
                       <dt className="sr-only">Shares count</dt>
                       <dd className="flex items-center gap-2">
                         <Share2 className="w-5 h-5" aria-hidden="true" />
@@ -1099,7 +1099,7 @@ export default function ProjectDetail() {
                       </dd>
                     </div>
                   </dl>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-foreground/60">
                     Created {formatDate(project.createdAt)}
                   </div>
                 </section>
@@ -1148,7 +1148,7 @@ export default function ProjectDetail() {
                     {!editingAISummary ? (
                       <>
                         <div className="text-sm text-foreground mt-2">{project.aiSummary}</div>
-                        <div className="text-xs text-muted-foreground mt-2">Updated {project.aiSummaryUpdatedAt ? formatDate(project.aiSummaryUpdatedAt) : 'recently'}</div>
+                        <div className="text-xs text-foreground/60 mt-2">Updated {project.aiSummaryUpdatedAt ? formatDate(project.aiSummaryUpdatedAt) : 'recently'}</div>
                       </>
                     ) : (
                       <div className="mt-2 space-y-2">
@@ -1183,7 +1183,7 @@ export default function ProjectDetail() {
                     <div className="flex items-center justify-between">
                       <div className="text-sm font-semibold text-foreground">AI Project Summary</div>
                     </div>
-                    <p className="text-sm text-muted-foreground mt-2">No summary yet. Generate one based on the project and its discussion.</p>
+                    <p className="text-sm text-foreground/70 mt-2">No summary yet. Generate one based on the project and its discussion.</p>
                     <div className="mt-2">
                       <Button size="sm" variant="outline" onClick={async () => {
                         try {
@@ -1314,7 +1314,7 @@ export default function ProjectDetail() {
                             {project.tags.map((tag, index) => (
                               <span
                                 key={index}
-                                className="bg-muted text-muted-foreground px-3 py-1 rounded-full text-sm"
+                                className="bg-muted text-foreground/60 px-3 py-1 rounded-full text-sm"
                               >
                                 {tag}
                               </span>
@@ -1357,7 +1357,7 @@ export default function ProjectDetail() {
                                               showTitle={false}
                                             />
                                             {media.caption && (
-                                              <p className="text-sm text-muted-foreground mt-2 px-2">
+                                              <p className="text-sm text-foreground/60 mt-2 px-2">
                                                 {media.caption}
                                               </p>
                                             )}
@@ -1409,13 +1409,13 @@ export default function ProjectDetail() {
                                           <p className="font-medium text-foreground">
                                             {file.originalName || file.filename}
                                           </p>
-                                          <p className="text-sm text-muted-foreground">
+                                          <p className="text-sm text-foreground/70">
                                             {file.size ? `${(file.size / 1024 / 1024).toFixed(1)} MB` : ''}
                                             {file.size && file.mimetype && ' • '}
                                             {file.mimetype}
                                           </p>
                                           {file.description && (
-                                            <p className="text-sm text-muted-foreground mt-1">{file.description}</p>
+                                            <p className="text-sm text-foreground/70 mt-1">{file.description}</p>
                                           )}
                                         </div>
                                       </div>
@@ -1452,7 +1452,7 @@ export default function ProjectDetail() {
                           <MessageSquare className="w-5 h-5 text-maroon" />
                           <h3 className="text-lg font-semibold text-foreground">Share an Update</h3>
                         </div>
-                        <p className="text-sm text-muted-foreground mb-4">
+                        <p className="text-sm text-foreground/70 mb-4">
                           Keep your community engaged by sharing progress, milestones, or new features.
                         </p>
                         
@@ -1472,10 +1472,10 @@ export default function ProjectDetail() {
                               required
                             />
                                                           <div className="flex justify-between items-center mt-1">
-                                <div className="text-xs text-muted-foreground">
+                                <div className="text-xs text-foreground/60">
                                   Keep it concise and descriptive
                                 </div>
-                                <div className="text-xs text-muted-foreground/70">
+                                <div className="text-xs text-foreground/50">
                                   {newUpdate.title.length}/200
                                 </div>
                               </div>
@@ -1492,15 +1492,15 @@ export default function ProjectDetail() {
                             withUploads
                           />
                             <div className="flex justify-between items-center mt-1">
-                              <div className="text-xs text-muted-foreground">
+                              <div className="text-xs text-foreground/60">
                                 Share details that will help others understand your progress
                               </div>
-                            <div className="text-xs text-muted-foreground/70">{newUpdate.content.length}/5000</div>
+                            <div className="text-xs text-foreground/50">{newUpdate.content.length}/5000</div>
                             </div>
                           </div>
 
                           <div className="flex items-center justify-between pt-2">
-                            <div className="text-xs text-muted-foreground">
+                            <div className="text-xs text-foreground/60">
                               💡 <strong>Tip:</strong> Include screenshots, demos, or links to showcase your work
                             </div>
                             <Button 
@@ -1541,7 +1541,7 @@ export default function ProjectDetail() {
                                 {update.title}
                               </h4>
                               <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">
+                                <span className="text-sm text-foreground/70">
                                   {formatDate(update.createdAt)}
                                 </span>
                                 {/* Show edit/delete options for project owner and collaborators */}
@@ -1578,17 +1578,17 @@ export default function ProjectDetail() {
                       ) : (
                         <div className="text-center py-16 bg-card rounded-lg border border-border">
                           <div className="mx-auto w-24 h-24 bg-muted rounded-full flex items-center justify-center mb-4">
-                            <MessageSquare className="w-8 h-8 text-muted-foreground" />
+                            <MessageSquare className="w-8 h-8 text-foreground/60" />
                           </div>
                           <h3 className="text-lg font-medium text-foreground mb-2">No updates yet</h3>
-                          <p className="text-muted-foreground mb-4 max-w-sm mx-auto">
+                          <p className="text-foreground/70 mb-4 max-w-sm mx-auto">
                             {project && canManageProject
                               ? "Share your progress, new features, and milestones with the community!"
                               : `Stay tuned for updates from ${project?.ownerId?.fullName || project?.ownerId?.username || 'the project owner'}.`
                             }
                           </p>
                           {project && canManageProject && (
-                            <p className="text-sm text-muted-foreground/70">
+                            <p className="text-sm text-foreground/60">
                               👆 Use the form above to post your first update
                             </p>
                           )}
@@ -1616,7 +1616,7 @@ export default function ProjectDetail() {
                           withUploads
                         />
                         <div className="flex justify-between items-center">
-                          <p className="text-sm text-muted-foreground">
+                          <p className="text-sm text-foreground/70">
                             Posting as {user?.fullName || user?.username}
                           </p>
                           <Button 
@@ -1640,7 +1640,7 @@ export default function ProjectDetail() {
                       </form>
                     ) : (
                       <div className="bg-muted rounded-lg p-4 mb-6 text-center">
-                        <p className="text-muted-foreground">Please log in to post a comment.</p>
+                        <p className="text-foreground/70">Please log in to post a comment.</p>
                       </div>
                     )}
 
@@ -1665,8 +1665,8 @@ export default function ProjectDetail() {
                         ))
                       ) : (
                         <div className="text-center py-8">
-                          <p className="text-muted-foreground">No comments yet.</p>
-                          <p className="text-sm text-muted-foreground/70">Be the first to share your thoughts!</p>
+                          <p className="text-foreground/70">No comments yet.</p>
+                          <p className="text-sm text-foreground/60">Be the first to share your thoughts!</p>
                         </div>
                       )}
                     </div>
@@ -1688,20 +1688,20 @@ export default function ProjectDetail() {
                 <h3 className="text-lg font-semibold mb-4 text-foreground">Project Creator</h3>
                 <div className="flex items-center gap-3 mb-4">
                   <div className="w-12 h-12 bg-muted rounded-full flex items-center justify-center">
-                    <Users className="w-6 h-6 text-muted-foreground" />
+                    <Users className="w-6 h-6 text-foreground/60" />
                   </div>
                   <div>
                     <p className="font-medium text-foreground">
                       {project.ownerId?.fullName || project.ownerId?.username}
                     </p>
                     {project.ownerId?.college && (
-                      <p className="text-sm text-muted-foreground">{project.ownerId.college}</p>
+                      <p className="text-sm text-foreground/60">{project.ownerId.college}</p>
                     )}
                   </div>
                 </div>
 
                 {project.ownerId?.bio && (
-                  <p className="text-sm text-muted-foreground mb-4">{project.ownerId.bio}</p>
+                  <p className="text-sm text-foreground/70 mb-4">{project.ownerId.bio}</p>
                 )}
                 
                 <Link href={`/profile/${project.ownerId?._id}`}>
@@ -1716,23 +1716,23 @@ export default function ProjectDetail() {
                 <h3 id="project-stats-heading" className="text-lg font-semibold mb-4 text-foreground">Project Statistics</h3>
                 <dl className="space-y-3">
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Created</dt>
+                    <dt className="text-foreground/60">Created</dt>
                     <dd className="font-medium text-foreground">{formatDate(project.createdAt)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Last Updated</dt>
+                    <dt className="text-foreground/60">Last Updated</dt>
                     <dd className="font-medium text-foreground">{formatDate(project.updatedAt)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Views</dt>
+                    <dt className="text-foreground/60">Views</dt>
                     <dd className="font-medium text-foreground">{project.analytics?.views || 0}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Comments</dt>
+                    <dt className="text-foreground/60">Comments</dt>
                     <dd className="font-medium text-foreground">{project.analytics?.totalComments || 0}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-muted-foreground">Subscribers</dt>
+                    <dt className="text-foreground/60">Subscribers</dt>
                     <dd className="font-medium text-foreground">{project.analytics?.subscribers || 0}</dd>
                   </div>
                 </dl>
@@ -1745,7 +1745,7 @@ export default function ProjectDetail() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
           <div className="bg-background rounded-lg shadow-lg w-full max-w-md p-4 space-y-3 border border-border">
             <div className="text-lg font-semibold text-foreground">Report Project</div>
-            <div className="text-sm text-muted-foreground">Select a reason and optionally add details.</div>
+            <div className="text-sm text-foreground/70">Select a reason and optionally add details.</div>
             <div>
               <select className="w-full border border-border rounded px-2 py-2 bg-background text-foreground" value={projectReportReason} onChange={(e) => setProjectReportReason(e.target.value as any)}>
                 <option value="spam">Spam</option>

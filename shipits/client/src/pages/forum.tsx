@@ -21,7 +21,7 @@ import { truncateMarkdown } from "@/lib/markdownUtils";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useI18n } from "@/contexts/I18nContext";
 
-const sortOptions = ["Featured", "Most Recent", "Most Viewed", "Trending"];
+const sortOptions = ["Featured", "Most Recent", "Most Recently Updated", "Most Viewed", "Trending"];
 
 // Organization tag styling and icons
 const getOrgIcon = (org: string): string => {
@@ -69,7 +69,7 @@ export default function Forum() {
   const [acItems, setAcItems] = useState<{ projects: any[]; tags: any[]; users: any[] }>({ projects: [], tags: [], users: [] });
   const [selectedCategory, setSelectedCategory] = useState("All");
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [sortBy, setSortBy] = useState("Most Recent");
+  const [sortBy, setSortBy] = useState("Most Recently Updated");
   const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState<{
     isOpen: boolean;
@@ -84,6 +84,7 @@ export default function Forum() {
   const getSortField = (sort: string) => {
     switch (sort) {
       case "Most Recent": return "createdAt";
+      case "Most Recently Updated": return "updatedAt";
       case "Most Viewed": return "analytics.views";
       case "Trending": return "analytics.views";
       case "Featured": return "featured";
@@ -831,6 +832,9 @@ export default function Forum() {
                           break;
                         case 'Most Recent':
                           translatedOption = t('mostRecent', 'Most Recent');
+                          break;
+                        case 'Most Recently Updated':
+                          translatedOption = t('mostRecentlyUpdated', 'Most Recently Updated');
                           break;
                         case 'Most Viewed':
                           translatedOption = t('mostViewed', 'Most Viewed');
