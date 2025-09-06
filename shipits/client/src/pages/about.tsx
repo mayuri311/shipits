@@ -95,13 +95,12 @@ export default function AboutPage() {
   return (
     <div className="min-h-screen bg-background">
       {/* Hero Section */}
-      <section className="relative py-20 bg-gradient-to-br from-maroon via-maroon/90 to-maroon/80 text-white overflow-hidden">
-        <div className="absolute inset-0 bg-black/20"></div>
+      <section className="relative py-20 hero-soft-bg text-foreground overflow-hidden">
 
         {/* Back to Home Link */}
         <div className="relative z-10 pt-6">
           <div className="container mx-auto px-6 max-w-6xl">
-            <Link href="/" className="inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors duration-300">
+            <Link href="/" className="inline-flex items-center gap-2 text-foreground/80 hover:text-foreground transition-colors duration-300">
               <ArrowRight className="w-4 h-4 rotate-180" />
               Back to Home
             </Link>
@@ -114,19 +113,19 @@ export default function AboutPage() {
             <h1 className="text-5xl md:text-6xl font-bold mb-6">
               Welcome to Osprey @ CMU
             </h1>
-            <p className="text-xl md:text-3xl text-white/90 mb-8 max-w-4xl mx-auto leading-relaxed">
+            <p className="text-xl md:text-3xl text-foreground/80 mb-8 max-w-4xl mx-auto leading-relaxed">
               The ultimate platform for CMU students to showcase projects,
               collaborate on ideas, and build lasting connections in a vibrant community of innovators.
             </p>
             <div className="flex flex-wrap justify-center gap-4 mb-12">
-              <div className="bg-white/10 backdrop-blur-sm rounded-full px-6 py-3">
-                <span className="text-white font-semibold">🎯 Project Showcase</span>
+              <div className="bg-white/60 backdrop-blur-sm rounded-full px-6 py-3 border border-white/30">
+                <span className="text-foreground font-semibold">🎯 Project Showcase</span>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-full px-6 py-3">
-                <span className="text-white font-semibold">📚 Resource Sharing</span>
+              <div className="bg-white/60 backdrop-blur-sm rounded-full px-6 py-3 border border-white/30">
+                <span className="text-foreground font-semibold">📚 Resource Sharing</span>
               </div>
-              <div className="bg-white/10 backdrop-blur-sm rounded-full px-6 py-3">
-                <span className="text-white font-semibold">💬 Real-time Chat</span>
+              <div className="bg-white/60 backdrop-blur-sm rounded-full px-6 py-3 border border-white/30">
+                <span className="text-foreground font-semibold">💬 Real-time Chat</span>
               </div>
             </div>
           </div>

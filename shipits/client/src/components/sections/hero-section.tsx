@@ -1,5 +1,6 @@
 import { ParallaxSection } from "@/components/ui/parallax-section";
 import { Rocket } from "lucide-react";
+import ospreyWordmark from "@assets/osprey-wordmark-scandinavian.svg";
 
 export function HeroSection() {
   return (
@@ -35,11 +36,12 @@ export function HeroSection() {
           </ParallaxSection>
           
           <ParallaxSection>
-            <div className="bg-muted rounded-lg h-96 flex items-center justify-center border-2 border-border">
-              <div className="text-center">
-                <Rocket className="text-6xl text-maroon mb-4 mx-auto" size={96} />
-                <p className="text-muted-foreground font-medium">Hero Graphic Placeholder</p>
-              </div>
+            <div className="flex items-center justify-center">
+              <img
+                src={ospreyWordmark}
+                alt="Osprey Wordmark"
+                className="w-full max-w-md h-auto"
+              />
             </div>
           </ParallaxSection>
         </div>

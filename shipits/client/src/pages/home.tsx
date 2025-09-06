@@ -114,7 +114,7 @@ export default function Home() {
               <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
                 <Github size={24} />
               </a>
-              <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
+              <a href="/forum" className="text-gray-400 hover:text-maroon transition-colors p-2">
                 <MessageSquare size={24} />
               </a>
               <a href="#" className="text-gray-400 hover:text-maroon transition-colors p-2">
