@@ -91,18 +91,48 @@ export default function Dashboard() {
   });
 
   // Get notifications
-  const { data: notificationsData, isLoading: isNotificationsLoading } = useQuery({
-    queryKey: ['notifications-dashboard'],
-    queryFn: () => notificationsApi.getNotifications({ limit: 10, includeRead: true }),
-    enabled: isAuthenticated && activeTab === "notifications",
+  const { data: notificationsData, isLoading: isNotificationsLoading, error: notificationsError } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: async () => {
+      try {
+        return await notificationsApi.getNotifications({ limit: 10, includeRead: true });
+      } catch (error: any) {
+        // If it's an authentication error, trigger auth state refresh
+        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authentication required')) {
+          console.warn('Notifications auth failed, refreshing auth state');
+          // Force auth context to refresh
+          queryClient.invalidateQueries({ queryKey: ['user'] });
+          throw new Error('Please sign in to view notifications');
+        }
+        throw error;
+      }
+    },
+    enabled: isAuthenticated && !!currentUser,
+    refetchInterval: isAuthenticated ? 30000 : false, // Only refresh if authenticated
+    retry: (failureCount, error: any) => {
+      // Don't retry auth errors
+      if (error.message.includes('sign in') || error.message.includes('401') || error.message.includes('403')) {
+        return false;
+      }
+      return failureCount < 3;
+    },
+    retryDelay: 1000,
   });
 
   // Mark notification as read
   const markAsReadMutation = useMutation({
     mutationFn: (id: string) => notificationsApi.markAsRead(id),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['notifications-dashboard'] });
+      queryClient.invalidateQueries({ queryKey: ['notifications'] });
       queryClient.invalidateQueries({ queryKey: ['notifications', 'unread-count'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to mark notification as read",
+        variant: "destructive",
+      });
     },
   });
 
@@ -147,6 +177,19 @@ export default function Dashboard() {
   }
 
   const { user, projects, statistics, recentActivity } = dashboard;
+
+  // Debug logging
+  if (process.env.NODE_ENV === 'development') {
+    console.log('Dashboard Debug:', {
+      isAuthenticated,
+      isDashboardLoading,
+      isNotificationsLoading,
+      notificationsError,
+      notificationsData,
+      notificationCount: notifications.length,
+      unreadCount: statistics?.unreadNotifications,
+    });
+  }
 
   const togglePinStat = async (key: string) => {
     const next = pinnedStats.includes(key) ? pinnedStats.filter(k => k !== key) : [...pinnedStats, key];
@@ -398,7 +441,7 @@ export default function Dashboard() {
             <TabsContent value="overview" className="space-y-6">
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Recent Projects */}
-                <Card className="lg:col-span-2">
+                <Card className="lg:col-span-1">
                   <CardHeader>
                     <CardTitle>Recent Projects</CardTitle>
                     <CardDescription>Your latest projects and their performance</CardDescription>
@@ -440,6 +483,93 @@ export default function Dashboard() {
                           <p>No projects yet</p>
                           <p className="text-xs mt-1">Create your first project to get started!</p>
                         </div>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Recent Notifications */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center justify-between">
+                      Recent Notifications
+                      {statistics.unreadNotifications > 0 && (
+                        <Badge variant="destructive" className="h-5 w-5 rounded-full p-0 flex items-center justify-center text-xs">
+                          {statistics.unreadNotifications}
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <CardDescription>Your latest notifications</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {isNotificationsLoading ? (
+                        <div className="text-center py-4 text-gray-500 text-sm">Loading...</div>
+                      ) : notificationsError ? (
+                        <div className="text-center py-4 text-red-500 text-sm">
+                          <p>{(notificationsError as any)?.message?.includes('sign in') ? 'Please sign in to view notifications' : 'Failed to load notifications'}</p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-2"
+                            onClick={() => {
+                              if ((notificationsError as any)?.message?.includes('sign in')) {
+                                window.location.href = '/forum';
+                              } else {
+                                queryClient.invalidateQueries({ queryKey: ['notifications'] });
+                              }
+                            }}
+                          >
+                            {(notificationsError as any)?.message?.includes('sign in') ? 'Go to Forum' : 'Retry'}
+                          </Button>
+                        </div>
+                      ) : notifications.slice(0, 3).length === 0 ? (
+                        <div className="text-center py-4 text-gray-500 text-sm">
+                          <Bell className="h-8 w-8 mx-auto mb-2 text-gray-300" />
+                          <p>No notifications yet</p>
+                        </div>
+                      ) : (
+                        notifications.slice(0, 3).map((notification: Notification) => (
+                          <div
+                            key={notification._id}
+                            className={`p-3 border rounded-lg cursor-pointer transition-colors text-sm ${
+                              !notification.read ? 'bg-blue-50 border-blue-200' : 'hover:bg-gray-50'
+                            }`}
+                            onClick={() => {
+                              if (!notification.read) {
+                                markAsReadMutation.mutate(notification._id);
+                              }
+                              setActiveTab("notifications");
+                            }}
+                          >
+                            <div className="flex items-start gap-2">
+                              {getNotificationIcon(notification.type)}
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium text-sm truncate">{notification.title}</p>
+                                <p className="text-xs text-gray-600 truncate">{notification.message}</p>
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {notification.createdAt && isValidDate(notification.createdAt)
+                                    ? formatDistanceToNow(new Date(notification.createdAt), { addSuffix: true })
+                                    : 'Unknown time'
+                                  }
+                                </p>
+                              </div>
+                              {!notification.read && (
+                                <Badge variant="destructive" className="h-2 w-2 p-0 rounded-full" />
+                              )}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                      {notifications.length > 3 && (
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="w-full text-xs"
+                          onClick={() => setActiveTab("notifications")}
+                        >
+                          View All Notifications
+                        </Button>
                       )}
                     </div>
                   </CardContent>
@@ -603,6 +733,26 @@ export default function Dashboard() {
                     <div className="space-y-4">
                       {isNotificationsLoading ? (
                         <div className="text-center py-8 text-gray-500">Loading notifications...</div>
+                      ) : notificationsError ? (
+                        <div className="text-center py-8 text-red-500">
+                          <Bell className="h-12 w-12 mx-auto mb-4 text-red-300" />
+                          <p>{(notificationsError as any)?.message?.includes('sign in') ? 'Authentication Required' : 'Failed to load notifications'}</p>
+                          <p className="text-xs mt-1">{(notificationsError as any)?.message?.includes('sign in') ? 'Please sign in to view your notifications' : 'Please refresh the page or try again later'}</p>
+                          <Button 
+                            variant="outline" 
+                            size="sm" 
+                            className="mt-2"
+                            onClick={() => {
+                              if ((notificationsError as any)?.message?.includes('sign in')) {
+                                window.location.href = '/forum';
+                              } else {
+                                queryClient.invalidateQueries({ queryKey: ['notifications'] });
+                              }
+                            }}
+                          >
+                            {(notificationsError as any)?.message?.includes('sign in') ? 'Go to Forum' : 'Retry'}
+                          </Button>
+                        </div>
                       ) : notifications.length === 0 ? (
                         <div className="text-center py-8 text-gray-500">
                           <Bell className="h-12 w-12 mx-auto mb-4 text-gray-300" />

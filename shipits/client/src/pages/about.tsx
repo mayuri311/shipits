@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "wouter";
 import { ParallaxSection } from "@/components/ui/parallax-section";
 import {
   MessageSquare,
@@ -41,11 +42,6 @@ export default function AboutPage() {
         "Build your portfolio with real project showcases",
         "Connect with collaborators for future projects"
       ],
-      stats: [
-        { label: "Active Projects", value: "500+", icon: Zap },
-        { label: "Community Members", value: "2,000+", icon: Users },
-        { label: "Daily Interactions", value: "150+", icon: MessageSquare }
-      ],
       demo: {
         title: "Real Projects, Real Impact",
         description: "From mobile apps to AI research, showcase what you're building and get the recognition you deserve.",
@@ -55,26 +51,21 @@ export default function AboutPage() {
     {
       id: 'list' as const,
       title: "Collaborative Lists",
-      subtitle: "Organize Ideas, Build Teams",
+      subtitle: "Share Resources, Discover Opportunities",
       icon: Target,
       color: "from-purple-500 to-pink-500",
       bgColor: "from-purple-50 to-pink-50",
       benefits: [
-        "Create and manage project wishlists",
-        "Find teammates with complementary skills",
-        "Track project milestones and progress",
-        "Share resources and learning materials",
-        "Organize hackathon teams and study groups"
-      ],
-      stats: [
-        { label: "Active Lists", value: "300+", icon: CheckCircle },
-        { label: "Team Formations", value: "80+", icon: Users },
-        { label: "Shared Resources", value: "1,000+", icon: BookOpen }
+        "Share curated lists of valuable resources",
+        "Discover top VC firms, accelerators, and funding opportunities",
+        "Find the best coffee shops, study spots, and workspaces in Pittsburgh",
+        "Create professional networks and industry connections",
+        "Build community knowledge bases for career development"
       ],
       demo: {
-        title: "From Idea to Reality",
-        description: "Transform concepts into collaborative projects. Find the right people and resources to bring your vision to life.",
-        features: ["Task Management", "Team Recruitment", "Resource Sharing", "Progress Tracking"]
+        title: "Community Knowledge Hub",
+        description: "Create and discover valuable resource lists that help fellow students navigate opportunities, build networks, and make informed decisions.",
+        features: ["Resource Curation", "Community Sharing", "Professional Networks", "Local Discovery"]
       }
     },
     {
@@ -91,11 +82,6 @@ export default function AboutPage() {
         "Private conversations and group chats",
         "Stay connected with your project teams"
       ],
-      stats: [
-        { label: "Messages Daily", value: "5,000+", icon: Zap },
-        { label: "Active Conversations", value: "200+", icon: MessageSquare },
-        { label: "Files Shared", value: "800+", icon: Coffee }
-      ],
       demo: {
         title: "Communication Without Boundaries",
         description: "Seamless communication for distributed teams. Share ideas, code, and feedback in real-time.",
@@ -111,6 +97,17 @@ export default function AboutPage() {
       {/* Hero Section */}
       <section className="relative py-20 bg-gradient-to-br from-maroon via-maroon/90 to-maroon/80 text-white overflow-hidden">
         <div className="absolute inset-0 bg-black/20"></div>
+
+        {/* Back to Home Link */}
+        <div className="relative z-10 pt-6">
+          <div className="container mx-auto px-6 max-w-6xl">
+            <Link href="/" className="inline-flex items-center gap-2 text-white/80 hover:text-white transition-colors duration-300">
+              <ArrowRight className="w-4 h-4 rotate-180" />
+              Back to Home
+            </Link>
+          </div>
+        </div>
+
         <div className="relative container mx-auto px-6 max-w-6xl text-center">
           <div className="mb-8">
             <Sparkles className="mx-auto mb-6 w-16 h-16 text-yellow-300" />
@@ -126,7 +123,7 @@ export default function AboutPage() {
                 <span className="text-white font-semibold">🎯 Project Showcase</span>
               </div>
               <div className="bg-white/10 backdrop-blur-sm rounded-full px-6 py-3">
-                <span className="text-white font-semibold">🤝 Team Collaboration</span>
+                <span className="text-white font-semibold">📚 Resource Sharing</span>
               </div>
               <div className="bg-white/10 backdrop-blur-sm rounded-full px-6 py-3">
                 <span className="text-white font-semibold">💬 Real-time Chat</span>
@@ -197,16 +194,7 @@ export default function AboutPage() {
                 ))}
               </div>
 
-              {/* Stats */}
-              <div className="grid grid-cols-3 gap-6">
-                {currentFeature.stats.map((stat, index) => (
-                  <div key={index} className="text-center">
-                    <stat.icon className="w-8 h-8 text-maroon mx-auto mb-2" />
-                    <div className="text-2xl font-bold text-foreground">{stat.value}</div>
-                    <div className="text-sm text-muted-foreground">{stat.label}</div>
-                  </div>
-                ))}
-              </div>
+
             </div>
 
             {/* Feature Benefits */}
@@ -227,12 +215,60 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* Feature Navigation */}
+      <section className="py-16 bg-white">
+        <div className="container mx-auto px-6 max-w-4xl text-center">
+          <h2 className="text-3xl font-bold mb-4">Ready to Explore?</h2>
+          <p className="text-lg text-muted-foreground mb-8">
+            Jump right into the features that interest you most
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <Link href="/forum">
+              <div className="group p-6 bg-gradient-to-br from-blue-50 to-cyan-50 rounded-xl border-2 border-blue-200 hover:border-blue-400 transition-all duration-300 cursor-pointer">
+                <Rocket className="w-12 h-12 text-blue-600 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+                <h3 className="text-xl font-semibold mb-2 text-blue-900">Explore Forum</h3>
+                <p className="text-blue-700 mb-4">Browse projects and join discussions</p>
+                <div className="inline-flex items-center gap-2 bg-blue-600 text-white px-4 py-2 rounded-full text-sm font-medium group-hover:bg-blue-700 transition-colors">
+                  Visit Forum
+                  <ArrowRight className="w-4 h-4" />
+                </div>
+              </div>
+            </Link>
+
+            <Link href="/lists">
+              <div className="group p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl border-2 border-purple-200 hover:border-purple-400 transition-all duration-300 cursor-pointer">
+                <Target className="w-12 h-12 text-purple-600 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+                <h3 className="text-xl font-semibold mb-2 text-purple-900">Browse Lists</h3>
+                <p className="text-purple-700 mb-4">Discover resources and opportunities</p>
+                <div className="inline-flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-full text-sm font-medium group-hover:bg-purple-700 transition-colors">
+                  View Lists
+                  <ArrowRight className="w-4 h-4" />
+                </div>
+              </div>
+            </Link>
+
+            <Link href="/chat">
+              <div className="group p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl border-2 border-green-200 hover:border-green-400 transition-all duration-300 cursor-pointer">
+                <MessageSquare className="w-12 h-12 text-green-600 mx-auto mb-4 group-hover:scale-110 transition-transform" />
+                <h3 className="text-xl font-semibold mb-2 text-green-900">Start Chatting</h3>
+                <p className="text-green-700 mb-4">Connect with fellow students</p>
+                <div className="inline-flex items-center gap-2 bg-green-600 text-white px-4 py-2 rounded-full text-sm font-medium group-hover:bg-green-700 transition-colors">
+                  Open Chat
+                  <ArrowRight className="w-4 h-4" />
+                </div>
+              </div>
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Call to Action */}
       <section className="py-20 bg-gradient-to-r from-maroon to-maroon/90 text-white">
         <div className="container mx-auto px-6 max-w-4xl text-center">
           <h2 className="text-4xl font-bold mb-6">Ready to Join the Community?</h2>
           <p className="text-xl text-white/90 mb-8 leading-relaxed">
-            Start showcasing your projects, collaborating with peers, and building connections that last a lifetime.
+            Start showcasing your projects, discovering valuable resources, and building connections that last a lifetime.
           </p>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
@@ -244,8 +280,8 @@ export default function AboutPage() {
 
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">
               <Users className="w-12 h-12 text-blue-300 mx-auto mb-4" />
-              <h3 className="text-xl font-semibold mb-2">Build Teams</h3>
-              <p className="text-white/80">Find collaborators for your next big idea</p>
+              <h3 className="text-xl font-semibold mb-2">Share Resources</h3>
+              <p className="text-white/80">Discover valuable resources and build connections</p>
             </div>
 
             <div className="bg-white/10 backdrop-blur-sm rounded-xl p-6">

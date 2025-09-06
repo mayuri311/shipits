@@ -18,6 +18,12 @@ const API_BASE = '/api';
 async function handleResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const error = await response.json().catch(() => ({ error: 'Network error' }));
+    console.error('API Error:', {
+      url: response.url,
+      status: response.status,
+      statusText: response.statusText,
+      error
+    });
     throw new Error(error.error || error.message || `HTTP ${response.status}`);
   }
   return response.json();
@@ -1067,10 +1073,21 @@ export const notificationsApi = {
     if (params.limit) searchParams.set('limit', params.limit.toString());
     if (params.includeRead !== undefined) searchParams.set('includeRead', params.includeRead.toString());
 
-    const response = await fetch(`${API_BASE}/notifications?${searchParams}`, {
-      credentials: 'include',
-    });
-    return handleResponse(response);
+    const url = `${API_BASE}/notifications?${searchParams}`;
+    console.log('Fetching notifications from:', url, 'with params:', params);
+    
+    try {
+      const response = await fetch(url, {
+        credentials: 'include',
+      });
+      console.log('Notifications response:', response.status, response.statusText);
+      const result = await handleResponse(response);
+      console.log('Notifications result:', result);
+      return result;
+    } catch (error) {
+      console.error('Notifications fetch error:', error);
+      throw error;
+    }
   },
 
   async getUnreadCount(): Promise<ApiResponse<{ count: number }>> {

@@ -43,15 +43,49 @@ export default function NotificationBell() {
   // Get unread notification count
   const { data: unreadCountData } = useQuery({
     queryKey: ['notifications', 'unread-count'],
-    queryFn: () => notificationsApi.getUnreadCount(),
+    queryFn: async () => {
+      try {
+        return await notificationsApi.getUnreadCount();
+      } catch (error: any) {
+        // Silently fail auth errors for the notification bell
+        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authentication required')) {
+          return { success: true, data: { count: 0 } };
+        }
+        throw error;
+      }
+    },
     refetchInterval: 30000, // Refresh every 30 seconds
+    retry: (failureCount, error: any) => {
+      // Don't retry auth errors
+      if (error.message.includes('401') || error.message.includes('403')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 
   // Get notifications when the popover opens
   const { data: notificationsData, isLoading: isLoadingNotifications } = useQuery({
     queryKey: ['notifications'],
-    queryFn: () => notificationsApi.getNotifications({ limit: 20, includeRead: true }),
+    queryFn: async () => {
+      try {
+        return await notificationsApi.getNotifications({ limit: 20, includeRead: true });
+      } catch (error: any) {
+        // Handle auth errors gracefully
+        if (error.message.includes('401') || error.message.includes('403') || error.message.includes('Authentication required')) {
+          return { success: true, data: { notifications: [], pagination: {} } };
+        }
+        throw error;
+      }
+    },
     enabled: isOpen,
+    retry: (failureCount, error: any) => {
+      // Don't retry auth errors
+      if (error.message.includes('401') || error.message.includes('403')) {
+        return false;
+      }
+      return failureCount < 2;
+    },
   });
 
   // Mark notification as read mutation

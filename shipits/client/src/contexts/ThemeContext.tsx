@@ -4,7 +4,7 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { useAuth } from './AuthContext';
+import { AuthContext } from './AuthContext';
 
 // Theme types
 export type ThemeMode = 'light' | 'dark' | 'system';
@@ -189,7 +189,11 @@ const ACCENT_COLORS: Record<AccentColor, { light: string; dark: string }> = {
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const { user, updateUser } = useAuth();
+  // Use auth context safely - it might not be available during initial render
+  const authContext = useContext(AuthContext);
+  const user = authContext?.user;
+  const updateUser = authContext?.updateUser;
+  
   const [preferences, setPreferences] = useState<ThemePreferences>(DEFAULT_PREFERENCES);
   const [isSystemDark, setIsSystemDark] = useState(false);
 
@@ -296,7 +300,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     setPreferences(newPreferences);
 
     // Save to user profile if authenticated
-    if (user) {
+    if (user && updateUser) {
       updateUser({ themePreferences: newPreferences });
     } else {
       // Save to localStorage for non-authenticated users
@@ -307,7 +311,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const resetToDefaults = () => {
     setPreferences(DEFAULT_PREFERENCES);
     
-    if (user) {
+    if (user && updateUser) {
       updateUser({ themePreferences: DEFAULT_PREFERENCES });
     } else {
       localStorage.removeItem('theme-preferences');

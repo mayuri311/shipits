@@ -3366,16 +3366,26 @@ Please provide a helpful, data-driven response based on the available statistics
   // Get user's notifications
   app.get('/api/notifications', requireAuth, async (req, res) => {
     try {
+      const userId = req.session.userId!;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'User not authenticated'
+        });
+      }
+
       const page = parseInt(req.query.page as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const limit = Math.min(parseInt(req.query.limit as string) || 20, 100); // Cap at 100
       const includeRead = req.query.includeRead === 'true';
 
-      const filter: any = { recipientId: req.session.userId! };
+      const filter: any = { recipientId: new Types.ObjectId(userId) };
       if (!includeRead) {
         filter.read = false;
       }
 
       const skip = (page - 1) * limit;
+
+      console.log(`Getting notifications for user ${userId}, filter:`, filter, `limit: ${limit}, skip: ${skip}`);
 
       const [notifications, total] = await Promise.all([
         Notification.find(filter)
@@ -3385,9 +3395,12 @@ Please provide a helpful, data-driven response based on the available statistics
           .populate('relatedComment', 'content')
           .sort({ createdAt: -1 })
           .skip(skip)
-          .limit(limit),
+          .limit(limit)
+          .lean(), // Use lean for better performance
         Notification.countDocuments(filter)
       ]);
+
+      console.log(`Found ${notifications.length} notifications for user ${userId}`);
 
       const totalPages = Math.ceil(total / limit);
 
@@ -3409,7 +3422,8 @@ Please provide a helpful, data-driven response based on the available statistics
       console.error('Get notifications error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get notifications'
+        error: 'Failed to get notifications',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   });
@@ -3417,10 +3431,20 @@ Please provide a helpful, data-driven response based on the available statistics
   // Get unread notification count
   app.get('/api/notifications/unread/count', requireAuth, async (req, res) => {
     try {
+      const userId = req.session.userId!;
+      if (!userId) {
+        return res.status(401).json({
+          success: false,
+          error: 'User not authenticated'
+        });
+      }
+
       const count = await Notification.countDocuments({
-        recipientId: req.session.userId!,
+        recipientId: new Types.ObjectId(userId),
         read: false
       });
+
+      console.log(`Unread notifications count for user ${userId}: ${count}`);
 
       res.json({
         success: true,
@@ -3430,7 +3454,8 @@ Please provide a helpful, data-driven response based on the available statistics
       console.error('Get unread count error:', error);
       res.status(500).json({
         success: false,
-        error: 'Failed to get unread count'
+        error: 'Failed to get unread count',
+        details: process.env.NODE_ENV === 'development' ? error.message : undefined
       });
     }
   });

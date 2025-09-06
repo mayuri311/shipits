@@ -19,6 +19,8 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+export { AuthContext };
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -35,10 +37,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const response = await authApi.getCurrentUser();
       if (response.success && response.data) {
         setUser(response.data.user);
+      } else {
+        setUser(null);
       }
-    } catch (error) {
+    } catch (error: any) {
       // User not authenticated, which is fine
-      console.log('No active session');
+      console.log('No active session:', error.message);
+      setUser(null);
     } finally {
       setIsLoading(false);
     }
