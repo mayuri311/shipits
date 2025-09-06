@@ -466,8 +466,15 @@ export class MongoStorage implements IMongoStorage {
     try {
       const project = await Project.findById(projectId).lean();
       if (!project) return [];
-      
-      return project.updates || [];
+
+      // Sort updates by createdAt in descending order (newest first)
+      const sortedUpdates = (project.updates || []).sort((a: any, b: any) => {
+        const dateA = new Date(a.createdAt).getTime();
+        const dateB = new Date(b.createdAt).getTime();
+        return dateB - dateA; // Newest first
+      });
+
+      return sortedUpdates;
     } catch (error) {
       console.error('Error getting project updates:', error);
       return [];
